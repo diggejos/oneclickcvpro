@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- SEO Meta Tags -->
+    <title>ResuMate AI | Free LinkedIn to Resume Builder & CV Tailor</title>
+    <meta name="description" content="Transform your LinkedIn profile into a tailored, ATS-friendly resume in seconds. Free AI Resume Builder that customizes your CV for specific job descriptions." />
+    <meta name="keywords" content="AI resume builder, LinkedIn to resume, CV maker, free resume builder, ATS friendly resume, AI cover letter, resume tailoring, job description matcher" />
+    <meta name="author" content="ResuMate AI" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="ResuMate AI - Instant LinkedIn to Resume Converter" />
+    <meta property="og:description" content="Don't write from scratch. Drop your LinkedIn PDF here and get a perfect resume tailored to your dream job instantly." />
+    <meta property="og:image" content="https://images.unsplash.com/photo-1586281380349-632531db7ed4?auto=format&fit=crop&q=80&w=1200" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:title" content="ResuMate AI - Free AI Resume Builder" />
+    <meta property="twitter:description" content="Stop tweaking your CV manually. Let AI build and tailor your resume in seconds." />
+    
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%234F46E5'/><path d='M30 30 H70 V80 H30 Z' fill='white'/><path d='M40 20 L60 20 L70 30' fill='white' opacity='0.8'/><path d='M70 60 L50 80 L30 60' fill='%234F46E5' opacity='0.2'/></svg>" />
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://js.stripe.com/v3/" async></script>
+    <style>
+      body { font-family: 'Inter', sans-serif; }
+      /* Print fix for browsers */
+      @media print {
+        @page { margin: 0; }
+        html, body {
+          height: auto;
+          overflow: visible;
+        }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
