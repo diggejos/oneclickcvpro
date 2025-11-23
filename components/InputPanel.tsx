@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { FileText, Wand2, RotateCcw, Download, CheckCircle2, Edit2, Layout, Sliders, ImageIcon, RefreshCw, Zap, Building2, Languages, ScrollText, Lock } from 'lucide-react';
+import { FileText, Wand2, RotateCcw, Download, CheckCircle2, Edit2, Layout, Sliders, ImageIcon, RefreshCw, Zap, Building2, Languages, ScrollText, Lock, UploadCloud } from 'lucide-react';
 import { AppState, ResumeConfig, TemplateId, ResumeLength, ResumeTone, FileInput, ResumeLanguage } from '../types';
 import { FileDropZone } from './FileDropZone';
 
@@ -90,29 +90,23 @@ export const InputPanel: React.FC<InputPanelProps> = ({
         
         {/* Section 1: Base CV Setup */}
         <div className={`transition-all duration-500 ${isBaseReady ? 'bg-white p-4 rounded-xl border border-indigo-100 shadow-sm' : ''}`}>
-          <div className="flex justify-between items-center mb-2">
+          <div className="flex justify-between items-center mb-4">
              <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
                 <div className={`w-2 h-2 rounded-full ${isBaseReady ? 'bg-green-500' : 'bg-slate-300'}`}></div>
-                Base Resume
+                Base Resume Data
              </div>
             {isBaseReady && (
                <button onClick={resetBase} className="text-xs text-slate-400 hover:text-indigo-600 flex items-center gap-1">
-                 <Edit2 size={12} /> Change
+                 <Edit2 size={12} /> Change Source
                </button>
             )}
           </div>
 
           {!isBaseReady ? (
-            <div className="relative animate-in fade-in">
-              <FileDropZone 
-                label="" 
-                value={baseResumeInput} 
-                onChange={setBaseResumeInput}
-                placeholder="Tip: Export your LinkedIn Profile to PDF and drop it here. Or Select All (Ctrl+A) on your LinkedIn profile page and paste the text."
-              />
+            <div className="relative animate-in fade-in space-y-4">
               
-              <div className="flex gap-2 mt-3">
-                 {/* Image Upload Button */}
+              {/* 1. Profile Picture - Made distinct */}
+              <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
                  <div className="flex-shrink-0">
                     <input 
                       type="file" 
@@ -123,41 +117,63 @@ export const InputPanel: React.FC<InputPanelProps> = ({
                     />
                     <button 
                       onClick={handleImageClick}
-                      className={`w-10 h-10 rounded-lg flex items-center justify-center border transition-colors ${profileImage ? 'border-indigo-300 bg-indigo-50' : 'border-slate-300 bg-white hover:bg-slate-50'}`}
-                      title="Upload Profile Picture"
+                      className={`w-14 h-14 rounded-full flex items-center justify-center border-2 transition-all overflow-hidden relative group
+                        ${profileImage ? 'border-indigo-500' : 'border-slate-300 bg-slate-50 hover:bg-slate-100 border-dashed'}`}
                     >
                       {profileImage ? (
-                        <img src={profileImage} alt="Profile" className="w-full h-full object-cover rounded-lg" />
+                        <>
+                          <img src={profileImage} alt="Profile" className="w-full h-full object-cover" />
+                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                             <Edit2 size={16} className="text-white"/>
+                          </div>
+                        </>
                       ) : (
-                        <ImageIcon size={16} className="text-slate-500" />
+                        <ImageIcon size={24} className="text-slate-400" />
                       )}
                     </button>
                  </div>
-
-                <button
-                  onClick={onGenerateBase}
-                  disabled={isGeneratingBase || !baseResumeInput.content}
-                  className={`flex-grow py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 font-bold text-white text-sm shadow-md transition-all
-                    ${isGeneratingBase || !baseResumeInput.content 
-                      ? 'bg-slate-400 cursor-not-allowed' 
-                      : 'bg-slate-800 hover:bg-slate-900'
-                    }`}
-                >
-                  {isGeneratingBase ? <RotateCcw className="animate-spin" size={14} /> : <CheckCircle2 size={14} />}
-                  {isGeneratingBase ? 'Analyzing...' : 'Set Base Resume'}
-                </button>
+                 <div className="flex-grow">
+                    <label className="block text-xs font-bold text-slate-700 mb-0.5">Profile Photo (Optional)</label>
+                    <p className="text-[10px] text-slate-500 mb-2 leading-tight">Add a professional headshot to your resume.</p>
+                    <button onClick={handleImageClick} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1">
+                       <UploadCloud size={12}/> {profileImage ? 'Change Photo' : 'Upload Image'}
+                    </button>
+                 </div>
               </div>
+
+              {/* 2. Content Input - Clarified Text */}
+              <div>
+                <FileDropZone 
+                  label="Resume Content" 
+                  value={baseResumeInput} 
+                  onChange={setBaseResumeInput}
+                  placeholder="Paste your Bio, Work History, LinkedIn Summary, or drag & drop any PDF resume here. Our AI will structure it automatically."
+                />
+              </div>
+              
+              <button
+                onClick={onGenerateBase}
+                disabled={isGeneratingBase || !baseResumeInput.content}
+                className={`w-full py-3 px-4 rounded-lg flex items-center justify-center gap-2 font-bold text-white text-sm shadow-md transition-all
+                  ${isGeneratingBase || !baseResumeInput.content 
+                    ? 'bg-slate-400 cursor-not-allowed' 
+                    : 'bg-slate-800 hover:bg-slate-900'
+                  }`}
+              >
+                {isGeneratingBase ? <RotateCcw className="animate-spin" size={14} /> : <CheckCircle2 size={14} />}
+                {isGeneratingBase ? 'Analyzing Content...' : 'Analyze & Create Base Resume'}
+              </button>
             </div>
           ) : (
             <div className="flex items-center justify-between">
               <div className="text-xs text-slate-500 flex items-center gap-2">
                 <CheckCircle2 size={14} className="text-green-500" />
                 <span className="truncate max-w-[150px]">
-                   {baseResumeInput.type === 'file' ? baseResumeInput.fileName : 'Text Content'}
+                   {baseResumeInput.type === 'file' ? baseResumeInput.fileName : 'Text Content Extracted'}
                 </span>
               </div>
               {profileImage && (
-                <div className="w-6 h-6 rounded-full overflow-hidden border border-indigo-100">
+                <div className="w-8 h-8 rounded-full overflow-hidden border border-indigo-100 shadow-sm">
                    <img src={profileImage} alt="Mini profile" className="w-full h-full object-cover" />
                 </div>
               )}
@@ -175,7 +191,7 @@ export const InputPanel: React.FC<InputPanelProps> = ({
                 label="Target Job (Optional)" 
                 value={jobDescriptionInput} 
                 onChange={setJobDescriptionInput}
-                placeholder="Paste Job Description text or drag & drop a PDF..."
+                placeholder="Paste the Job Description text here (or drag PDF) to tailor your resume specifically for this role..."
               />
             </div>
 
