@@ -314,12 +314,12 @@ export const Editor: React.FC<EditorProps> = ({ initialResume, onSave, onBack, i
               
               <header className="space-y-4">
                 <h1 className="text-3xl md:text-5xl font-extrabold text-slate-800 tracking-tight leading-tight">
-                   Free AI Resume Builder & <br/>
-                   <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">LinkedIn to CV Converter</span>
+                   OneClick<span className="text-indigo-600">CV</span>Pro <br/>
+                   <span className="text-xl md:text-2xl font-medium text-slate-500 block mt-2">The AI Resume Architect</span>
                 </h1>
                 <p className="text-lg text-slate-600 max-w-xl mx-auto leading-relaxed">
-                  Simply drop your <strong className="text-slate-900">LinkedIn PDF</strong> or paste your profile URL text. 
-                  Our AI builds a professional resume in seconds and tailors it to any job description.
+                  Transform your <strong className="text-slate-900">LinkedIn Profile</strong> into a perfect, ATS-ready resume in seconds. 
+                  Customize it for any job application with a single click.
                 </p>
               </header>
 

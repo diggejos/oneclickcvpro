@@ -20,7 +20,7 @@ export const Logo: React.FC<LogoProps> = ({ className = "", iconOnly = false, li
       </div>
       {!iconOnly && (
         <span className={`font-extrabold tracking-tight text-xl ${light ? 'text-white' : 'text-slate-900'}`}>
-          ResuMate<span className={light ? 'text-indigo-200' : 'text-indigo-600'}>AI</span>
+          OneClickCV<span className={light ? 'text-indigo-200' : 'text-indigo-600'}>Pro</span>
         </span>
       )}
     </div>
