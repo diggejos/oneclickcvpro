@@ -1,12 +1,14 @@
+
 import React, { useState, useEffect } from 'react';
 import { InputPanel } from './InputPanel';
 import { ResumePreview } from './ResumePreview';
-import { generateTailoredResume, parseBaseResume, updateResumeWithChat } from '../services/geminiService';
-import { ResumeData, AppState, ResumeConfig, ChatMessage, FileInput, SavedResume, User } from '../types';
-import { AlertCircle, FileText, Edit3, Layers, ArrowLeft, LogIn, Linkedin, Wand2, CheckCircle2, Zap } from 'lucide-react';
-import { ChatAssistant } from './ChatAssistant';
+import { generateTailoredResume, parseBaseResume } from '../services/geminiService';
+import { ResumeData, AppState, ResumeConfig, FileInput, SavedResume, User, PageView } from '../types';
+import { AlertCircle, Layers, ArrowLeft, LogIn, Linkedin, Wand2, CheckCircle2, Zap, Edit3 } from 'lucide-react';
 import { EditModal } from './EditModal';
 import { Logo } from './Logo';
+import { Footer } from './Footer';
+import { EditorActions } from '../App';
 
 interface EditorProps {
   initialResume?: SavedResume | null;
@@ -16,9 +18,21 @@ interface EditorProps {
   onRequireAuth: () => void;
   currentUser: User | null;
   onAddCredits: () => void;
+  onNavigate: (page: PageView, subPage?: any) => void;
+  onRegisterActions: (actions: EditorActions | null) => void;
 }
 
-export const Editor: React.FC<EditorProps> = ({ initialResume, onSave, onBack, isGuest, onRequireAuth, currentUser, onAddCredits }) => {
+export const Editor: React.FC<EditorProps> = ({ 
+  initialResume, 
+  onSave, 
+  onBack, 
+  isGuest, 
+  onRequireAuth, 
+  currentUser, 
+  onAddCredits, 
+  onNavigate,
+  onRegisterActions 
+}) => {
   
   // Inputs
   const [resumeId, setResumeId] = useState<string>(initialResume?.id || crypto.randomUUID());
@@ -44,10 +58,6 @@ export const Editor: React.FC<EditorProps> = ({ initialResume, onSave, onBack, i
   const [viewMode, setViewMode] = useState<'base' | 'tailored'>('base');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Chat & Edit State
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [isChatLoading, setIsChatLoading] = useState(false);
-  const [isChatOpen, setIsChatOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   // Update view mode if tailored data exists on load
@@ -57,6 +67,24 @@ export const Editor: React.FC<EditorProps> = ({ initialResume, onSave, onBack, i
       setAppState(AppState.TAILORED_READY);
     }
   }, [initialResume]);
+
+  // REGISTER ACTIONS FOR GLOBAL CHAT
+  useEffect(() => {
+    onRegisterActions({
+      getResume: () => viewMode === 'tailored' ? tailoredResumeData : baseResumeData,
+      updateResume: (newData: ResumeData) => {
+        if (viewMode === 'tailored') {
+           setTailoredResumeData(newData);
+        } else {
+           setBaseResumeData(newData);
+        }
+      },
+      isTailored: () => viewMode === 'tailored'
+    });
+
+    // Cleanup on unmount
+    return () => onRegisterActions(null);
+  }, [baseResumeData, tailoredResumeData, viewMode, onRegisterActions]);
 
   const handleImageUpload = (file: File) => {
     const reader = new FileReader();
@@ -74,7 +102,6 @@ export const Editor: React.FC<EditorProps> = ({ initialResume, onSave, onBack, i
     setErrorMsg(null);
     setTailoredResumeData(null);
     setViewMode('base');
-    setChatMessages([]);
 
     try {
       const data = await parseBaseResume(baseResumeInput);
@@ -102,10 +129,6 @@ export const Editor: React.FC<EditorProps> = ({ initialResume, onSave, onBack, i
       setTailoredResumeData(data);
       setAppState(AppState.TAILORED_READY);
       setViewMode('tailored');
-      setChatMessages(prev => [...prev, {
-        role: 'assistant',
-        text: jobDescriptionInput.content ? "I've tailored your resume to the job description!" : `I've refined your resume style and language (${config.language}).`
-      }]);
     } catch (err: any) {
       console.error(err);
       setAppState(AppState.ERROR);
@@ -118,7 +141,6 @@ export const Editor: React.FC<EditorProps> = ({ initialResume, onSave, onBack, i
       setBaseResumeData(null);
       setTailoredResumeData(null);
       setAppState(AppState.IDLE);
-      setChatMessages([]);
       setViewMode('base');
     }
   };
@@ -171,45 +193,6 @@ export const Editor: React.FC<EditorProps> = ({ initialResume, onSave, onBack, i
   const isTailoredView = viewMode === 'tailored' && !!tailoredResumeData;
   const isLoading = appState === AppState.GENERATING_BASE || appState === AppState.GENERATING_TAILORED;
 
-  const handleSendMessage = async (text: string) => {
-    if (!activeResumeData) return;
-    setChatMessages(prev => [...prev, { role: 'user', text }]);
-    setIsChatLoading(true);
-    try {
-      const result = await updateResumeWithChat(activeResumeData, text);
-      setChatMessages(prev => [...prev, { 
-        role: 'assistant', 
-        text: "I've drafted a change based on your request.",
-        proposal: { data: result.data, description: result.description, status: 'pending' }
-      }]);
-    } catch (err) {
-      setChatMessages(prev => [...prev, { role: 'assistant', text: "Sorry, I couldn't process that request." }]);
-    } finally {
-      setIsChatLoading(false);
-    }
-  };
-
-  const handleAcceptProposal = (index: number) => {
-    setChatMessages(prev => {
-      const newMsgs = [...prev];
-      const msg = newMsgs[index];
-      if (msg.proposal && msg.proposal.status === 'pending') {
-        msg.proposal.status = 'accepted';
-        if (isTailoredView) setTailoredResumeData(msg.proposal.data);
-        else setBaseResumeData(msg.proposal.data);
-      }
-      return newMsgs;
-    });
-  };
-
-  const handleDeclineProposal = (index: number) => {
-    setChatMessages(prev => {
-      const newMsgs = [...prev];
-      if (newMsgs[index].proposal) newMsgs[index].proposal!.status = 'declined';
-      return newMsgs;
-    });
-  };
-
   const handleManualSave = (newData: ResumeData) => {
     if (isTailoredView) setTailoredResumeData(newData);
     else setBaseResumeData(newData);
@@ -229,7 +212,6 @@ export const Editor: React.FC<EditorProps> = ({ initialResume, onSave, onBack, i
     };
 
     if (isGuest) {
-      // Pass the current state up to app so it can save after auth
       onSave(resumeToSave); 
       onRequireAuth();
     } else {
@@ -242,8 +224,7 @@ export const Editor: React.FC<EditorProps> = ({ initialResume, onSave, onBack, i
       if (window.confirm("You are in Guest Mode. If you leave now, your unsaved changes will be lost. Do you want to Log In to save first?")) {
         onRequireAuth();
       } else {
-         // They really want to leave/reset
-         window.location.reload(); // Simple reset for guest
+         window.location.reload();
       }
     } else {
       onBack();
@@ -305,12 +286,12 @@ export const Editor: React.FC<EditorProps> = ({ initialResume, onSave, onBack, i
         </div>
       </div>
 
-      <div className="flex-grow h-[60vh] md:h-screen overflow-y-auto bg-slate-200/50 p-4 md:p-8 relative">
+      <div className="flex-grow h-[60vh] md:h-screen overflow-y-auto bg-slate-200/50 relative">
         {/* SEO LANDING CONTENT - Visible when no data */}
         {!activeResumeData && !isLoading && appState !== AppState.ERROR && (
-          <div className="h-full flex flex-col items-center justify-center animate-in fade-in zoom-in duration-500">
-            <article className="max-w-2xl w-full text-center space-y-8 p-8">
-              <Logo className="justify-center scale-150 mb-6" />
+          <div className="h-full flex flex-col items-center animate-in fade-in zoom-in duration-500 overflow-y-auto">
+            <article className="max-w-3xl w-full text-center space-y-8 p-8 flex-grow">
+              <Logo className="justify-center scale-150 mb-6 mt-12" />
               
               <header className="space-y-4">
                 <h1 className="text-3xl md:text-5xl font-extrabold text-slate-800 tracking-tight leading-tight">
@@ -348,31 +329,36 @@ export const Editor: React.FC<EditorProps> = ({ initialResume, onSave, onBack, i
                  </section>
               </div>
               
-              <div className="pt-8">
+              <div className="pt-8 mb-12">
                  <p className="text-sm font-bold text-indigo-600 flex items-center justify-center gap-2 animate-pulse">
                     <Zap size={16} /> Start on the left panel to begin
                  </p>
               </div>
             </article>
+
+            {/* Footer attached to scrollable area */}
+            <div className="w-full">
+               <Footer onNavigate={onNavigate} />
+            </div>
           </div>
         )}
 
         {isLoading && (
-          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-20 flex flex-col items-center justify-center">
+          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-20 flex flex-col items-center justify-center h-full">
              <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
              <p className="text-indigo-800 font-semibold animate-pulse">Processing...</p>
           </div>
         )}
 
         {appState === AppState.ERROR && (
-          <div className="w-full max-w-lg mx-auto mt-20 p-6 bg-red-50 border border-red-200 rounded-xl flex items-start gap-4">
+          <div className="w-full max-w-lg mx-auto mt-20 p-6 bg-red-50 border border-red-200 rounded-xl flex items-start gap-4 mx-8">
             <AlertCircle className="text-red-600 mt-1" />
             <div><h3 className="font-bold text-red-800">Error</h3><p className="text-red-600 text-sm">{errorMsg}</p></div>
           </div>
         )}
 
         {activeResumeData && (
-          <div className={isLoading ? 'opacity-30 blur-[1px]' : 'opacity-100'}>
+          <div className={`p-4 md:p-8 ${isLoading ? 'opacity-30 blur-[1px]' : 'opacity-100'}`}>
             <div className="mb-4 flex items-center justify-between text-sm font-medium text-slate-500">
                <div className="bg-slate-200 p-1 rounded-lg flex text-xs font-bold shadow-inner">
                   <button onClick={() => setViewMode('base')} className={`px-4 py-1.5 rounded-md transition-all flex items-center gap-2 ${viewMode === 'base' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
@@ -391,12 +377,7 @@ export const Editor: React.FC<EditorProps> = ({ initialResume, onSave, onBack, i
         )}
       </div>
 
-      {activeResumeData && (
-        <>
-          <ChatAssistant messages={chatMessages} onSendMessage={handleSendMessage} onAcceptProposal={handleAcceptProposal} onDeclineProposal={handleDeclineProposal} isLoading={isChatLoading} isOpen={isChatOpen} setIsOpen={setIsChatOpen} />
-          {isEditModalOpen && <EditModal data={activeResumeData} onSave={handleManualSave} onClose={() => setIsEditModalOpen(false)} />}
-        </>
-      )}
+      {isEditModalOpen && activeResumeData && <EditModal data={activeResumeData} onSave={handleManualSave} onClose={() => setIsEditModalOpen(false)} />}
     </div>
   );
 };

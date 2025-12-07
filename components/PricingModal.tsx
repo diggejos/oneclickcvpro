@@ -2,26 +2,27 @@ import React, { useState } from 'react';
 import { X, Zap, Check, CreditCard, ShieldCheck, AlertCircle } from 'lucide-react';
 import { Logo } from './Logo';
 
-// --- STRIPE CONFIGURATION ---
-// 1. Go to dashboard.stripe.com -> Developers -> API Keys
-// 2. Paste your Publishable Key here
-const STRIPE_PUBLISHABLE_KEY = "pk_test_YOUR_PUBLISHABLE_KEY_HERE"; 
-
-// 3. Create Products in Stripe Dashboard and paste Price IDs here
+const STRIPE_PUBLISHABLE_KEY = "pk_test_51SWcl5R39BynqI4Bq4eYjxMnCpXRr3Y0QXEq4Ap5Mb4VaiUD8BTWFYjs90cBFiCIDYlinnb39ptDk6ciXoTjBFsz00jIECG4zP"; 
 const STRIPE_PRICES = {
-  starter: "price_YOUR_STARTER_PRICE_ID",
-  pro: "price_YOUR_PRO_PRICE_ID"
+  starter: "price_1SWco1R39BynqI4BpMS8S89b", 
+  pro: "price_1SWcpaR39BynqI4BFu4QnT4e"
 };
+
+const SIMULATION_MODE = false; 
+// If VITE_BACKEND_URL is set (Production), use it. 
+// Otherwise default to "" to let Vite Proxy handle routing to localhost:4242
+const BACKEND_URL = (import.meta as any).env.VITE_BACKEND_URL || ""; 
 
 interface PricingModalProps {
   onClose: () => void;
   onPurchase: (amount: number) => void;
   currentCredits: number;
+  userId?: string; // Needed for backend fulfillment
 }
 
 declare const Stripe: any;
 
-export const PricingModal: React.FC<PricingModalProps> = ({ onClose, onPurchase, currentCredits }) => {
+export const PricingModal: React.FC<PricingModalProps> = ({ onClose, onPurchase, currentCredits, userId }) => {
   const [isProcessing, setIsProcessing] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,12 +30,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ onClose, onPurchase,
     setIsProcessing(index);
     setError(null);
 
-    // ---------------------------------------------------------
-    // REAL PAYMENT LOGIC
-    // ---------------------------------------------------------
-    if (STRIPE_PUBLISHABLE_KEY.startsWith("pk_test_YOUR")) {
-      // SIMULATION MODE (If you haven't set up Stripe yet)
-      console.warn("Stripe Key not set. Running simulation.");
+    if (SIMULATION_MODE) {
       setTimeout(() => {
         onPurchase(amount);
         setIsProcessing(null);
@@ -45,31 +41,28 @@ export const PricingModal: React.FC<PricingModalProps> = ({ onClose, onPurchase,
     try {
       const stripe = Stripe(STRIPE_PUBLISHABLE_KEY);
       
-      // 1. Call YOUR Backend to create a Checkout Session
-      // Since we don't have a real backend here, this fetch will fail in this demo environment.
-      // In a real app, you would do:
-      /*
-      const response = await fetch('/api/create-checkout-session', {
+      const response = await fetch(`${BACKEND_URL}/create-checkout-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ priceId: STRIPE_PRICES[packType] }),
+        body: JSON.stringify({ 
+          priceId: STRIPE_PRICES[packType],
+          amount: amount,
+          userId: userId // CRITICAL: Link payment to user in DB
+        }),
       });
+
+      if (!response.ok) {
+        throw new Error("Backend connection failed.");
+      }
+
       const session = await response.json();
       
-      // 2. Redirect to Stripe
       const result = await stripe.redirectToCheckout({ sessionId: session.id });
       if (result.error) setError(result.error.message);
-      */
-
-      // FOR DEMO PURPOSES ONLY - MOCKING THE SUCCESS
-      // Remove this in production and uncomment above
-      setTimeout(() => {
-        onPurchase(amount);
-        setIsProcessing(null);
-      }, 2000);
 
     } catch (err: any) {
-      setError("Payment failed to initialize. Please check console.");
+      console.error(err);
+      setError(err.message || "Payment failed.");
       setIsProcessing(null);
     }
   };
@@ -78,7 +71,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ onClose, onPurchase,
     <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-300">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col md:flex-row max-h-[90vh]">
         
-        {/* Sidebar / Brand Area */}
+        {/* Sidebar */}
         <div className="bg-indigo-600 p-8 text-white md:w-1/3 flex flex-col justify-between relative overflow-hidden">
           <div className="relative z-10">
             <Logo light className="mb-6" />
@@ -94,7 +87,6 @@ export const PricingModal: React.FC<PricingModalProps> = ({ onClose, onPurchase,
             </div>
           </div>
           
-          {/* Decorational Circles */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 opacity-50"></div>
           <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-600 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2 opacity-50"></div>
           
@@ -118,14 +110,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ onClose, onPurchase,
             </div>
           )}
 
-          {STRIPE_PUBLISHABLE_KEY.includes("YOUR") && (
-             <div className="mb-4 p-2 bg-amber-50 border border-amber-200 rounded text-[10px] text-amber-700 text-center">
-               <strong>Developer Note:</strong> Configure <code>STRIPE_PUBLISHABLE_KEY</code> in code to enable real payments. Currently in Simulation Mode.
-             </div>
-          )}
-
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            
             {/* Option 1 */}
             <div className="bg-white border border-slate-200 rounded-xl p-6 hover:border-indigo-300 hover:shadow-lg transition-all relative group">
               <h4 className="font-bold text-slate-800 text-lg">Starter Pack</h4>
@@ -150,7 +135,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ onClose, onPurchase,
               </button>
             </div>
 
-            {/* Option 2 - Best Value */}
+            {/* Option 2 */}
             <div className="bg-white border-2 border-indigo-600 rounded-xl p-6 shadow-xl relative transform scale-105 sm:scale-100 md:scale-105 z-10">
               <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-indigo-600 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider">
                 Best Value
@@ -177,15 +162,9 @@ export const PricingModal: React.FC<PricingModalProps> = ({ onClose, onPurchase,
                 {isProcessing === 2 ? <span className="animate-spin text-lg">⟳</span> : <><CreditCard size={16}/> Buy Pro</>}
               </button>
             </div>
-
-          </div>
-          
-          <div className="mt-6 text-center text-xs text-slate-400">
-             1 Credit = 1 AI Tailoring or Translation Operation.
-             <br/>Unused credits never expire.
           </div>
         </div>
       </div>
     </div>
   );
-};
+}

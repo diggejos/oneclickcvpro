@@ -1,7 +1,11 @@
+
+
+
 import React, { useState } from 'react';
 import { Plus, Search, FileText, Trash2, Clock, LogOut, ChevronRight, LayoutGrid, List as ListIcon, Zap } from 'lucide-react';
-import { SavedResume, User } from '../types';
+import { SavedResume, User, PageView } from '../types';
 import { Logo } from './Logo';
+import { Footer } from './Footer';
 
 interface DashboardProps {
   user: User;
@@ -11,9 +15,10 @@ interface DashboardProps {
   onDelete: (id: string) => void;
   onLogout: () => void;
   onAddCredits: () => void;
+  onNavigate: (page: PageView, subPage?: any) => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ user, resumes, onCreate, onOpen, onDelete, onLogout, onAddCredits }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ user, resumes, onCreate, onOpen, onDelete, onLogout, onAddCredits, onNavigate }) => {
   const [search, setSearch] = useState('');
   const [view, setView] = useState<'grid' | 'list'>('grid');
 
@@ -27,7 +32,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, resumes, onCreate, o
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col">
       
       {/* Top Navigation */}
       <nav className="bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-10">
@@ -62,7 +67,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, resumes, onCreate, o
       </nav>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-7xl mx-auto px-6 py-8 flex-grow w-full">
         
         {/* Actions Bar */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
@@ -178,6 +183,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, resumes, onCreate, o
         )}
 
       </main>
+
+      <Footer onNavigate={onNavigate} />
     </div>
   );
 };

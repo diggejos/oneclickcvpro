@@ -3,8 +3,10 @@ import { CheckCircle2, ArrowRight, X, AlertTriangle, Copy } from 'lucide-react';
 import { User } from '../types';
 import { Logo } from './Logo';
 
-// --- GOOGLE LOGIN CONFIGURATION ---
-// In a production environment, this should be in a .env file (e.g. process.env.GOOGLE_CLIENT_ID)
+// BACKEND URL
+// If VITE_BACKEND_URL is set (Production), use it. 
+// Otherwise default to "" to let Vite Proxy handle routing to localhost:4242
+const BACKEND_URL = (import.meta as any).env.VITE_BACKEND_URL || "";
 const GOOGLE_CLIENT_ID = "1040938691698-o9k428s47iskgq1vs6rk1dnc1857tnir.apps.googleusercontent.com";
 
 declare const google: any;
@@ -21,35 +23,40 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin, isModal = false, on
   const [isRegister, setIsRegister] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [googleError, setGoogleError] = useState(false);
-  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
 
-  // --- REAL GOOGLE LOGIN LOGIC ---
+  // --- GOOGLE LOGIN ---
   useEffect(() => {
     if (!GOOGLE_CLIENT_ID) return;
 
-    const handleCredentialResponse = (response: any) => {
+    const handleCredentialResponse = async (response: any) => {
       try {
-        // Decode JWT ID Token
-        const base64Url = response.credential.split('.')[1];
-        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-        const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
-            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-        }).join(''));
-        
-        const payload = JSON.parse(jsonPayload);
+        setIsLoading(true);
+        // Send token to backend for verification and user retrieval
+        const res = await fetch(`${BACKEND_URL}/api/auth/google`, {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ token: response.credential })
+        });
 
-        // Construct User object from real Google data
+        if (!res.ok) throw new Error("Auth failed");
+
+        const userData = await res.json();
+        
+        // Construct User object from Backend Response
         const user: User = {
-          id: payload.sub,
-          email: payload.email,
-          name: payload.name,
-          avatar: payload.picture,
-          credits: 5 // Grant new users 5 free credits
+          id: userData.id, // Using Mongo ID
+          email: userData.email,
+          name: userData.name,
+          avatar: userData.avatar,
+          credits: userData.credits // Real credits from DB
         };
 
         onLogin(user);
       } catch (e) {
-        console.error("Failed to parse Google ID token", e);
+        console.error("Backend Auth Error", e);
+        alert("Authentication failed. Please try again.");
+      } finally {
+        setIsLoading(false);
       }
     };
 
@@ -60,7 +67,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin, isModal = false, on
           callback: handleCredentialResponse
         });
         
-        // Render the button into the div with id="googleButton"
         const btnContainer = document.getElementById("googleButton");
         if (btnContainer) {
           google.accounts.id.renderButton(
@@ -69,29 +75,28 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin, isModal = false, on
           );
         }
       } catch (e) {
-        console.error("Google GSI loaded but failed to initialize", e);
         setGoogleError(true);
       }
     } else {
       setGoogleError(true);
     }
-  }, []);
+  }, [onLogin]);
 
-  // --- SIMULATED FALLBACK LOGIN ---
+  // --- SIMULATED FALLBACK LOGIN (For when backend isn't running locally) ---
   const handleSimulatedLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
     
     setIsLoading(true);
-    // Simulate API delay
     setTimeout(() => {
       onLogin({
         id: 'user-' + crypto.randomUUID().substring(0,8),
         email: email,
         name: email.split('@')[0],
         avatar: `https://ui-avatars.com/api/?name=${email.split('@')[0]}&background=4f46e5&color=fff`,
-        credits: 3 // Default simulated credits
+        credits: 3 // Default
       });
+      setIsLoading(false);
     }, 1000);
   };
 
@@ -116,27 +121,24 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin, isModal = false, on
           </button>
         )}
 
-        {/* Brand Header */}
         <div className="flex flex-col items-center mb-8">
           <Logo className="mb-4 scale-125" />
           <h1 className="text-2xl md:text-3xl font-bold text-slate-900 mb-2 text-center">
             {isModal ? 'Save & Continue' : 'Welcome Back'}
           </h1>
           <p className="text-slate-500 text-center">
-            {isModal ? 'Create an account to save your resume and unlock premium tailoring.' : 'OneClickCVPro: The intelligent resume tailoring platform.'}
+            {isModal ? 'Log in to save your resume to the cloud.' : 'OneClickCVPro: Cloud-synced AI Resume Builder.'}
           </p>
         </div>
 
         <div className="space-y-4">
-            {/* REAL GOOGLE BUTTON CONTAINER */}
             <div className="w-full h-[42px] flex justify-center">
                <div id="googleButton" className="w-full"></div>
             </div>
             
-            {/* Fallback error message if Google script fails or origin mismatch */}
             {googleError && (
                <div className="text-[10px] text-center text-red-600 bg-red-50 border border-red-100 p-2 rounded">
-                 Google Sign-In failed to load. Check console for details.
+                 Google Sign-In failed to load.
                </div>
             )}
 
@@ -184,15 +186,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin, isModal = false, on
               </button>
             </div>
             
-            {/* GOOGLE CONFIG HELPER - FOR DEMO ONLY */}
-            <div className="mt-6 p-3 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-500 text-center break-all">
-               <p className="font-bold mb-1 flex items-center justify-center gap-1"><AlertTriangle size={10} className="text-amber-500"/> Google Login Setup</p>
-               <p className="mb-2">Add this URL to <strong>Authorized JavaScript origins</strong> in Google Console:</p>
-               <code className="bg-white border border-slate-300 px-2 py-1 rounded select-all block mb-2">{currentOrigin}</code>
-               <button onClick={() => navigator.clipboard.writeText(currentOrigin)} className="text-indigo-600 hover:underline flex items-center justify-center gap-1 w-full">
-                  <Copy size={10} /> Copy URL
-               </button>
-            </div>
+             <div className="mt-4 p-2 bg-slate-50 text-[10px] text-slate-400 text-center rounded">
+                Note: Email login is simulated. Use Google for DB persistence.
+             </div>
         </div>
       </div>
     </div>
