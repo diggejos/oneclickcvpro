@@ -28,11 +28,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin, isModal = false, on
   useEffect(() => {
     if (!GOOGLE_CLIENT_ID) return;
 
-    const handleCredentialResponse = async (response: any) => {
-      try {
-        setIsLoading(true);
-        // Send token to backend for verification and user retrieval
-        const res = await fetch(`${BACKEND_URL}/api/auth/google`, {
+  const handleCredentialResponse = async (response: any) => {
+    try {
+      setIsLoading(true);
+      console.log("BACKEND_URL in browser:", BACKEND_URL);
+  
+      const res = await fetch(`${BACKEND_URL}/api/auth/google`, {
+
            method: 'POST',
            headers: { 'Content-Type': 'application/json' },
            body: JSON.stringify({ token: response.credential })
