@@ -47,8 +47,8 @@ app.use((req, res, next) => {
 });
 
 app.use(cors({
-  origin: CLIENT_URL,
-  credentials: true
+  origin: true,       // reflect the request's origin
+  credentials: false, // we don't use cookies for this API
 }));
 
 // --- DATABASE CONNECTION ---
