@@ -7,7 +7,7 @@ import { Logo } from './Logo';
 // If VITE_BACKEND_URL is set (Production), use it. 
 // Otherwise default to "" to let Vite Proxy handle routing to localhost:4242
 const BACKEND_URL = (import.meta as any).env.VITE_BACKEND_URL || "";
-const GOOGLE_CLIENT_ID = "1040938691698-o9k428s47iskgq1vs6rk1dnc1857tnir.apps.googleusercontent.com";
+const GOOGLE_CLIENT_ID = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID || "";
 
 declare const google: any;
 
