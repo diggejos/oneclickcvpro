@@ -242,3 +242,44 @@ export const updateResumeWithChat = async (
 
   return JSON.parse(response.text) as { data: ResumeData; description: string };
 }
+
+
+import type { ResumeData } from "../types";
+
+interface UnifiedChatResult {
+  text: string;
+  proposal?: {
+    data: ResumeData;
+    metadata: {
+      source: "ai";
+      improvedSections: string[];
+    };
+  };
+}
+
+/**
+ * Temporary unified chat agent stub.
+ * This makes the app build on Render.
+ * You can later replace the implementation with real Gemini logic.
+ */
+export async function unifiedChatAgent(
+  history: { role: "user" | "model"; text: string }[],
+  text: string,
+  currentResumeData: ResumeData | null
+): Promise<UnifiedChatResult> {
+  // For now, just return a dummy response so the UI works
+  return {
+    text:
+      "AI assistant is not fully configured on this deployment yet. You said: " +
+      text,
+    proposal: currentResumeData
+      ? {
+          data: currentResumeData,
+          metadata: {
+            source: "ai",
+            improvedSections: [],
+          },
+        }
+      : undefined,
+  };
+}
