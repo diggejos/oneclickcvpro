@@ -1,40 +1,125 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AuthPage } from './components/AuthPage';
 import { Dashboard } from './components/Dashboard';
 import { Editor } from './components/Editor';
 import { PricingModal } from './components/PricingModal';
-import { User, SavedResume } from './types';
+import { BlogPage } from './components/BlogPage';
+import { AboutPage } from './components/AboutPage';
+import { LegalPage } from './components/LegalPage';
+import { PricingPage } from './components/PricingPage';
+import { ContactPage } from './components/ContactPage';
+import { ProductPage } from './components/ProductPage';
+import { GlobalChatAssistant } from './components/GlobalChatAssistant';
+import { unifiedChatAgent } from './services/geminiService';
+import { User, SavedResume, PageView, LegalPageType, ProductType, ChatMessage, ResumeData } from './types';
 
-// Storage Helpers (Simulate Backend)
+// API CONSTANT
+// If VITE_BACKEND_URL is set (Production), use it. 
+// Otherwise default to "" to let Vite Proxy handle routing to localhost:4242
+const BACKEND_URL = (import.meta as any).env.VITE_BACKEND_URL || "";
+
+// Storage Helpers (Fallback)
 const STORAGE_KEY_USER = 'oneclickcv_user';
-const STORAGE_KEY_DATA = 'oneclickcv_resumes';
+
+export interface EditorActions {
+  getResume: () => ResumeData | null;
+  updateResume: (data: ResumeData) => void;
+  isTailored: () => boolean;
+}
 
 const App: React.FC = () => {
-  const [view, setView] = useState<'auth' | 'dashboard' | 'editor'>('editor');
+  const [view, setView] = useState<PageView>('editor');
+  const [subPage, setSubPage] = useState<any>(null);
+  
   const [user, setUser] = useState<User | null>(null);
   const [savedResumes, setSavedResumes] = useState<SavedResume[]>([]);
   const [currentResume, setCurrentResume] = useState<SavedResume | null>(null);
 
-  // Auth & Modal States
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [pendingResumeSave, setPendingResumeSave] = useState<SavedResume | null>(null);
 
-  // Restore session on load
+  // Global Chat State
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  
+  const editorActionsRef = useRef<EditorActions | null>(null);
+
+  // 1. Initial Load
   useEffect(() => {
     const storedUser = localStorage.getItem(STORAGE_KEY_USER);
     if (storedUser) {
-      setUser(JSON.parse(storedUser));
-      loadResumes();
+      const parsedUser = JSON.parse(storedUser);
+      setUser(parsedUser);
+      fetchResumesFromDB(parsedUser.id);
+    }
+    
+    // Check URL query params for payment success
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('success') === 'true') {
+      alert("Payment Successful! Credits have been added to your account.");
+      // Clear URL
+      window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
 
-  const loadResumes = () => {
-    const data = localStorage.getItem(STORAGE_KEY_DATA);
-    if (data) {
-      setSavedResumes(JSON.parse(data));
+  // SEO Title
+  useEffect(() => {
+    let title = "OneClickCVPro | Instant AI Resume Builder";
+    if (view === 'about') title = "About Us | OneClickCVPro";
+    else if (view === 'blog') title = "Career Blog | OneClickCVPro";
+    else if (view === 'pricing') title = "Pricing | OneClickCVPro";
+    else if (view === 'contact') title = "Contact Support | OneClickCVPro";
+    else if (view === 'dashboard') title = "My Dashboard | OneClickCVPro";
+    document.title = title;
+  }, [view, subPage]);
+
+  // --- API OPERATIONS ---
+
+  const fetchResumesFromDB = async (userId: string) => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/resumes`, {
+        headers: { 'x-user-id': userId }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSavedResumes(data);
+      }
+    } catch (e) {
+      console.error("Failed to load resumes", e);
     }
   };
+
+  const syncResumeToDB = async (resume: SavedResume, userId: string) => {
+    try {
+      await fetch(`${BACKEND_URL}/api/resumes`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-user-id': userId
+        },
+        body: JSON.stringify(resume)
+      });
+      fetchResumesFromDB(userId); // Refresh list
+    } catch (e) {
+      console.error("Failed to sync resume", e);
+    }
+  };
+
+  const deleteResumeFromDB = async (resumeId: string, userId: string) => {
+    try {
+      await fetch(`${BACKEND_URL}/api/resumes/${resumeId}`, {
+        method: 'DELETE',
+        headers: { 'x-user-id': userId }
+      });
+      fetchResumesFromDB(userId);
+    } catch (e) {
+      console.error("Failed to delete", e);
+    }
+  };
+
+  // --- USER ACTIONS ---
 
   const updateUserState = (newUser: User) => {
     setUser(newUser);
@@ -42,15 +127,13 @@ const App: React.FC = () => {
   };
 
   const handleLogin = (loggedInUser: User) => {
-    // Ensure user has credits field (migration for old users)
-    const userWithCredits = { ...loggedInUser, credits: loggedInUser.credits ?? 5 };
-    updateUserState(userWithCredits);
-    
-    loadResumes();
+    updateUserState(loggedInUser);
+    fetchResumesFromDB(loggedInUser.id);
     setShowAuthModal(false);
 
     if (pendingResumeSave) {
-      handleSaveResume(pendingResumeSave);
+      // If we were waiting to save, save now to DB
+      syncResumeToDB(pendingResumeSave, loggedInUser.id);
       setPendingResumeSave(null);
     } else {
       setView('dashboard');
@@ -60,11 +143,59 @@ const App: React.FC = () => {
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem(STORAGE_KEY_USER);
+    setSavedResumes([]);
     setView('editor');
     setCurrentResume(null);
   };
 
-  // --- RESUME ACTIONS ---
+  const handleNavigate = (page: PageView, sub?: any) => {
+    setView(page);
+    setSubPage(sub || null);
+  };
+
+  // --- CHAT LOGIC (Same as before) ---
+  const handleChatSendMessage = async (text: string) => {
+    setChatMessages(prev => [...prev, { role: 'user', text }]);
+    setIsChatLoading(true);
+    try {
+      const currentResumeData = editorActionsRef.current?.getResume() || null;
+      const history = chatMessages.map(m => ({ role: m.role as 'user' | 'model', text: m.text }));
+      const result = await unifiedChatAgent(history, text, currentResumeData);
+      setChatMessages(prev => [...prev, {
+        role: 'assistant',
+        text: result.text,
+        proposal: result.proposal ? { data: result.proposal.data, description: result.proposal.description, status: 'pending' } : undefined
+      }]);
+    } catch (err) {
+      setChatMessages(prev => [...prev, { role: 'assistant', text: "Service unavailable." }]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
+
+  const handleChatAcceptProposal = (index: number) => {
+    const msg = chatMessages[index];
+    if (msg.proposal && msg.proposal.status === 'pending') {
+       setChatMessages(prev => {
+         const newMsgs = [...prev];
+         newMsgs[index].proposal!.status = 'accepted';
+         return newMsgs;
+       });
+       if (editorActionsRef.current) {
+         editorActionsRef.current.updateResume(msg.proposal.data);
+       }
+    }
+  };
+
+  const handleChatDeclineProposal = (index: number) => {
+    setChatMessages(prev => {
+      const newMsgs = [...prev];
+      if (newMsgs[index].proposal) newMsgs[index].proposal!.status = 'declined';
+      return newMsgs;
+    });
+  };
+
+  // --- RESUME CRUD ---
 
   const handleCreateNew = () => {
     setCurrentResume(null);
@@ -78,9 +209,13 @@ const App: React.FC = () => {
 
   const handleDeleteResume = (id: string) => {
     if (window.confirm('Delete this resume?')) {
-      const updated = savedResumes.filter(r => r.id !== id);
-      setSavedResumes(updated);
-      localStorage.setItem(STORAGE_KEY_DATA, JSON.stringify(updated));
+      if (user) {
+        deleteResumeFromDB(id, user.id);
+      } else {
+        // Fallback local logic
+        const updated = savedResumes.filter(r => r.id !== id);
+        setSavedResumes(updated);
+      }
     }
   };
 
@@ -91,70 +226,89 @@ const App: React.FC = () => {
       return;
     }
 
+    // Sync to DB
+    syncResumeToDB(resume, user.id);
+    
+    // Optimistic Update
     const existingIndex = savedResumes.findIndex(r => r.id === resume.id);
-    let updatedResumes;
-    
     if (existingIndex >= 0) {
-      updatedResumes = [...savedResumes];
-      updatedResumes[existingIndex] = resume;
+      const updated = [...savedResumes];
+      updated[existingIndex] = resume;
+      setSavedResumes(updated);
     } else {
-      updatedResumes = [...savedResumes, resume];
+      setSavedResumes([...savedResumes, resume]);
     }
-    
-    setSavedResumes(updatedResumes);
-    localStorage.setItem(STORAGE_KEY_DATA, JSON.stringify(updatedResumes));
-    setCurrentResume(resume); 
+    setCurrentResume(resume);
   };
 
-  // --- CREDIT ACTIONS ---
-
+  // Just optimistic update for UI, real update happens via Stripe Webhook
   const handleAddCredits = (amount: number) => {
     if (!user) return;
-    const updatedUser = { ...user, credits: (user.credits || 0) + amount };
-    updateUserState(updatedUser);
+    // In real app, credits update via webhook. 
+    // We can optimistically add them here or wait for reload.
+    // For now, let's just close modal.
     setShowPricingModal(false);
-    alert(`Successfully added ${amount} credits!`);
   };
-  
-  const handleConsumeCredit = () => {
-    if (user && user.credits > 0) {
-       updateUserState({ ...user, credits: user.credits - 1 });
-    }
-  };
+
+  // --- RENDER ---
+  let ContentComponent;
+  // (View Logic same as before)
+  if (view === 'about') ContentComponent = <AboutPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} />;
+  else if (view === 'contact') ContentComponent = <ContactPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} />;
+  else if (view === 'product') ContentComponent = <ProductPage type={subPage as ProductType} onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} onStart={() => handleNavigate('editor')} />;
+  else if (view === 'blog') ContentComponent = <BlogPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} initialPostId={subPage} />;
+  else if (view === 'pricing') ContentComponent = <PricingPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} onGetStarted={() => handleNavigate('editor')} />;
+  else if (view === 'legal') ContentComponent = <LegalPage type={subPage as LegalPageType} onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} />;
+  else if ((view === 'dashboard' || view === 'home') && user) {
+    ContentComponent = (
+      <Dashboard 
+        user={user} 
+        resumes={savedResumes} 
+        onCreate={handleCreateNew} 
+        onOpen={handleOpenResume} 
+        onDelete={handleDeleteResume}
+        onLogout={handleLogout}
+        onAddCredits={() => setShowPricingModal(true)}
+        onNavigate={handleNavigate}
+      />
+    );
+  } else {
+    ContentComponent = (
+      <Editor 
+        initialResume={currentResume} 
+        onSave={handleSaveResume} 
+        onBack={() => {
+          if (user) {
+            setView('dashboard');
+          } else {
+            setShowAuthModal(true);
+          }
+        }} 
+        isGuest={!user}
+        onRequireAuth={() => setShowAuthModal(true)}
+        currentUser={user}
+        onAddCredits={() => setShowPricingModal(true)}
+        onNavigate={handleNavigate}
+        onRegisterActions={(actions) => { editorActionsRef.current = actions; }}
+      />
+    );
+  }
 
   return (
     <>
-      {/* Main View Routing */}
-      {view === 'dashboard' && user ? (
-        <Dashboard 
-          user={user} 
-          resumes={savedResumes} 
-          onCreate={handleCreateNew} 
-          onOpen={handleOpenResume} 
-          onDelete={handleDeleteResume}
-          onLogout={handleLogout}
-          onAddCredits={() => setShowPricingModal(true)}
-        />
-      ) : (
-        <Editor 
-          initialResume={currentResume} 
-          onSave={handleSaveResume} 
-          onBack={() => {
-            if (user) {
-              loadResumes();
-              setView('dashboard');
-            } else {
-              setShowAuthModal(true);
-            }
-          }} 
-          isGuest={!user}
-          onRequireAuth={() => setShowAuthModal(true)}
-          currentUser={user}
-          onAddCredits={() => setShowPricingModal(true)}
-        />
-      )}
+      {ContentComponent}
 
-      {/* Auth Modal Overlay */}
+      <GlobalChatAssistant 
+         messages={chatMessages}
+         isOpen={isChatOpen}
+         setIsOpen={setIsChatOpen}
+         isLoading={isChatLoading}
+         onSendMessage={handleChatSendMessage}
+         onAcceptProposal={handleChatAcceptProposal}
+         onDeclineProposal={handleChatDeclineProposal}
+         hasActiveResume={view === 'editor' && !!editorActionsRef.current}
+      />
+
       {showAuthModal && (
         <AuthPage 
           onLogin={handleLogin} 
@@ -163,12 +317,12 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Pricing Modal Overlay */}
       {showPricingModal && user && (
         <PricingModal 
           onClose={() => setShowPricingModal(false)}
           currentCredits={user.credits}
           onPurchase={handleAddCredits}
+          userId={user.id} 
         />
       )}
     </>

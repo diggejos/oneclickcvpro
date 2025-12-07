@@ -1,3 +1,5 @@
+
+
 export interface Experience {
   role: string;
   company: string;
@@ -66,7 +68,7 @@ export interface FileInput {
   fileName?: string;
 }
 
-// --- NEW TYPES FOR APP MANAGEMENT ---
+// --- APP MANAGEMENT ---
 
 export interface User {
   id: string;
@@ -89,3 +91,20 @@ export interface SavedResume {
   config: ResumeConfig;
   profileImage?: string;
 }
+
+// --- MARKETING & CONTENT ---
+
+export interface BlogPost {
+  id: string;
+  title: string;
+  excerpt: string;
+  content: string; // Markdown or HTML string
+  date: string;
+  author: string;
+  image: string;
+  tags: string[];
+}
+
+export type PageView = 'home' | 'editor' | 'dashboard' | 'auth' | 'blog' | 'about' | 'legal' | 'pricing' | 'contact' | 'product';
+export type LegalPageType = 'impressum' | 'privacy' | 'terms';
+export type ProductType = 'builder' | 'linkedin' | 'tailoring';
