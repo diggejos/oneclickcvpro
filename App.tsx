@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthPage } from './components/AuthPage';
 import { Dashboard } from './components/Dashboard';
 import { Editor } from './components/Editor';
@@ -14,38 +15,7 @@ import { unifiedChatAgent } from './services/geminiService';
 import { User, SavedResume, PageView, LegalPageType, ProductType, ChatMessage, ResumeData } from './types';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 
-<Route path="/verify" element={<VerifyEmailPage />} />
-
-import { useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
-
-export default function VerifyEmailPage() {
-  const [params] = useSearchParams();
-  const token = params.get('token');
-
-  useEffect(() => {
-    if (token) {
-      fetch(`${import.meta.env.VITE_BACKEND_URL}/api/auth/verify-email?token=${token}`)
-        .then(res => res.json())
-        .then(data => {
-          alert(data.message || 'Email verified!');
-        })
-        .catch(err => {
-          console.error(err);
-          alert('Verification failed.');
-        });
-    }
-  }, [token]);
-
-  return <p>Verifying your email...</p>;
-}
-
-// API CONSTANT
-// If VITE_BACKEND_URL is set (Production), use it. 
-// Otherwise default to "" to let Vite Proxy handle routing to localhost:4242
 const BACKEND_URL = (import.meta as any).env.VITE_BACKEND_URL || "";
-
-// Storage Helpers (Fallback)
 const STORAGE_KEY_USER = 'oneclickcv_user';
 
 export interface EditorActions {
@@ -54,26 +24,20 @@ export interface EditorActions {
   isTailored: () => boolean;
 }
 
-const App: React.FC = () => {
+const AppRoutes: React.FC = () => {
   const [view, setView] = useState<PageView>('editor');
   const [subPage, setSubPage] = useState<any>(null);
-  
   const [user, setUser] = useState<User | null>(null);
   const [savedResumes, setSavedResumes] = useState<SavedResume[]>([]);
   const [currentResume, setCurrentResume] = useState<SavedResume | null>(null);
-
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [pendingResumeSave, setPendingResumeSave] = useState<SavedResume | null>(null);
-
-  // Global Chat State
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
-  
   const editorActionsRef = useRef<EditorActions | null>(null);
 
-  // 1. Initial Load
   useEffect(() => {
     const storedUser = localStorage.getItem(STORAGE_KEY_USER);
     if (storedUser) {
@@ -81,17 +45,14 @@ const App: React.FC = () => {
       setUser(parsedUser);
       fetchResumesFromDB(parsedUser.id);
     }
-    
-    // Check URL query params for payment success
+
     const params = new URLSearchParams(window.location.search);
     if (params.get('success') === 'true') {
       alert("Payment Successful! Credits have been added to your account.");
-      // Clear URL
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
 
-  // SEO Title
   useEffect(() => {
     let title = "OneClickCVPro | Instant AI Resume Builder";
     if (view === 'about') title = "About Us | OneClickCVPro";
@@ -101,8 +62,6 @@ const App: React.FC = () => {
     else if (view === 'dashboard') title = "My Dashboard | OneClickCVPro";
     document.title = title;
   }, [view, subPage]);
-
-  // --- API OPERATIONS ---
 
   const fetchResumesFromDB = async (userId: string) => {
     try {
@@ -122,13 +81,10 @@ const App: React.FC = () => {
     try {
       await fetch(`${BACKEND_URL}/api/resumes`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-user-id': userId
-        },
+        headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
         body: JSON.stringify(resume)
       });
-      fetchResumesFromDB(userId); // Refresh list
+      fetchResumesFromDB(userId);
     } catch (e) {
       console.error("Failed to sync resume", e);
     }
@@ -146,8 +102,6 @@ const App: React.FC = () => {
     }
   };
 
-  // --- USER ACTIONS ---
-
   const updateUserState = (newUser: User) => {
     setUser(newUser);
     localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(newUser));
@@ -157,9 +111,7 @@ const App: React.FC = () => {
     updateUserState(loggedInUser);
     fetchResumesFromDB(loggedInUser.id);
     setShowAuthModal(false);
-
     if (pendingResumeSave) {
-      // If we were waiting to save, save now to DB
       syncResumeToDB(pendingResumeSave, loggedInUser.id);
       setPendingResumeSave(null);
     } else {
@@ -180,7 +132,6 @@ const App: React.FC = () => {
     setSubPage(sub || null);
   };
 
-  // --- CHAT LOGIC (Same as before) ---
   const handleChatSendMessage = async (text: string) => {
     setChatMessages(prev => [...prev, { role: 'user', text }]);
     setIsChatLoading(true);
@@ -200,30 +151,6 @@ const App: React.FC = () => {
     }
   };
 
-  const handleChatAcceptProposal = (index: number) => {
-    const msg = chatMessages[index];
-    if (msg.proposal && msg.proposal.status === 'pending') {
-       setChatMessages(prev => {
-         const newMsgs = [...prev];
-         newMsgs[index].proposal!.status = 'accepted';
-         return newMsgs;
-       });
-       if (editorActionsRef.current) {
-         editorActionsRef.current.updateResume(msg.proposal.data);
-       }
-    }
-  };
-
-  const handleChatDeclineProposal = (index: number) => {
-    setChatMessages(prev => {
-      const newMsgs = [...prev];
-      if (newMsgs[index].proposal) newMsgs[index].proposal!.status = 'declined';
-      return newMsgs;
-    });
-  };
-
-  // --- RESUME CRUD ---
-
   const handleCreateNew = () => {
     setCurrentResume(null);
     setView('editor');
@@ -239,7 +166,6 @@ const App: React.FC = () => {
       if (user) {
         deleteResumeFromDB(id, user.id);
       } else {
-        // Fallback local logic
         const updated = savedResumes.filter(r => r.id !== id);
         setSavedResumes(updated);
       }
@@ -252,11 +178,7 @@ const App: React.FC = () => {
       setShowAuthModal(true);
       return;
     }
-
-    // Sync to DB
     syncResumeToDB(resume, user.id);
-    
-    // Optimistic Update
     const existingIndex = savedResumes.findIndex(r => r.id === resume.id);
     if (existingIndex >= 0) {
       const updated = [...savedResumes];
@@ -268,26 +190,13 @@ const App: React.FC = () => {
     setCurrentResume(resume);
   };
 
-  // Just optimistic update for UI, real update happens via Stripe Webhook
-  const handleAddCredits = (amount: number) => {
-    if (!user) return;
-    // In real app, credits update via webhook. 
-    // We can optimistically add them here or wait for reload.
-    // For now, let's just close modal.
-    setShowPricingModal(false);
-  };
-
-  // --- RENDER ---
-  let ContentComponent;
-  // (View Logic same as before)
-  if (view === 'about') ContentComponent = <AboutPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} />;
-  else if (view === 'contact') ContentComponent = <ContactPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} />;
-  else if (view === 'product') ContentComponent = <ProductPage type={subPage as ProductType} onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} onStart={() => handleNavigate('editor')} />;
-  else if (view === 'blog') ContentComponent = <BlogPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} initialPostId={subPage} />;
-  else if (view === 'pricing') ContentComponent = <PricingPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} onGetStarted={() => handleNavigate('editor')} />;
-  else if (view === 'legal') ContentComponent = <LegalPage type={subPage as LegalPageType} onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} />;
-  else if ((view === 'dashboard' || view === 'home') && user) {
-    ContentComponent = (
+  const ContentComponent = (view === 'about') ? <AboutPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} /> :
+    (view === 'contact') ? <ContactPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} /> :
+    (view === 'product') ? <ProductPage type={subPage as ProductType} onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} onStart={() => handleNavigate('editor')} /> :
+    (view === 'blog') ? <BlogPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} initialPostId={subPage} /> :
+    (view === 'pricing') ? <PricingPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} onGetStarted={() => handleNavigate('editor')} /> :
+    (view === 'legal') ? <LegalPage type={subPage as LegalPageType} onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} /> :
+    ((view === 'dashboard' || view === 'home') && user) ? (
       <Dashboard 
         user={user} 
         resumes={savedResumes} 
@@ -298,19 +207,11 @@ const App: React.FC = () => {
         onAddCredits={() => setShowPricingModal(true)}
         onNavigate={handleNavigate}
       />
-    );
-  } else {
-    ContentComponent = (
+    ) : (
       <Editor 
         initialResume={currentResume} 
         onSave={handleSaveResume} 
-        onBack={() => {
-          if (user) {
-            setView('dashboard');
-          } else {
-            setShowAuthModal(true);
-          }
-        }} 
+        onBack={() => user ? setView('dashboard') : setShowAuthModal(true)}
         isGuest={!user}
         onRequireAuth={() => setShowAuthModal(true)}
         currentUser={user}
@@ -319,40 +220,39 @@ const App: React.FC = () => {
         onRegisterActions={(actions) => { editorActionsRef.current = actions; }}
       />
     );
-  }
 
   return (
     <>
       {ContentComponent}
-
       <GlobalChatAssistant 
-         messages={chatMessages}
-         isOpen={isChatOpen}
-         setIsOpen={setIsChatOpen}
-         isLoading={isChatLoading}
-         onSendMessage={handleChatSendMessage}
-         onAcceptProposal={handleChatAcceptProposal}
-         onDeclineProposal={handleChatDeclineProposal}
-         hasActiveResume={view === 'editor' && !!editorActionsRef.current}
+        messages={chatMessages}
+        isOpen={isChatOpen}
+        setIsOpen={setIsChatOpen}
+        isLoading={isChatLoading}
+        onSendMessage={handleChatSendMessage}
+        hasActiveResume={view === 'editor' && !!editorActionsRef.current}
       />
-
-      {showAuthModal && (
-        <AuthPage 
-          onLogin={handleLogin} 
-          isModal={true} 
-          onClose={() => setShowAuthModal(false)} 
-        />
-      )}
-
+      {showAuthModal && <AuthPage onLogin={handleLogin} isModal onClose={() => setShowAuthModal(false)} />}
       {showPricingModal && user && (
         <PricingModal 
           onClose={() => setShowPricingModal(false)}
           currentCredits={user.credits}
-          onPurchase={handleAddCredits}
+          onPurchase={() => setShowPricingModal(false)}
           userId={user.id} 
         />
       )}
     </>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/verify" element={<VerifyEmailPage />} />
+        <Route path="/*" element={<AppRoutes />} />
+      </Routes>
+    </BrowserRouter>
   );
 };
 
