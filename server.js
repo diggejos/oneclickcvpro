@@ -12,15 +12,18 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // --- EMAIL SETUP ---
 // Configure email transporter (using Gmail or your email service)
-// For Gmail: use an App Password (not your regular password)
 // For other services: update host, port, auth as needed
+
 const transporter = nodemailer.createTransport({
-  service: process.env.EMAIL_SERVICE || 'gmail',
+  host: process.env.EMAIL_HOST,
+  port: Number(process.env.EMAIL_PORT || 587),
+  secure: false,
   auth: {
-    user: process.env.EMAIL_USER || 'your-email@gmail.com',
-    pass: process.env.EMAIL_PASSWORD || 'your-app-password'
-  }
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASSWORD,
+  },
 });
+
 
 // Test email connection (logs at startup)
 transporter.verify((error, success) => {
