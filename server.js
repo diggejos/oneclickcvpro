@@ -65,10 +65,18 @@ if (process.env.MONGODB_URI) {
 
 const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
-  googleId: { type: String, required: true },
+
+  // For normal signup
+  passwordHash: String,
+  isVerified: { type: Boolean, default: false },
+  verificationToken: String,
+
+  // For Google OAuth
+  googleId: String,
   name: String,
   avatar: String,
-  credits: { type: Number, default: 5 }, // Default free credits
+
+  credits: { type: Number, default: 5 },
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -200,6 +208,77 @@ app.delete('/api/resumes/:id', async (req, res) => {
   }
 });
 
+
+// --- Signup Route (Email + Password) ---
+
+const bcrypt = require('bcrypt');
+const crypto = require('crypto');
+
+app.post('/api/auth/register', async (req, res) => {
+  const { email, password, name } = req.body;
+
+  const existing = await User.findOne({ email });
+  if (existing) return res.status(400).json({ error: "Email already used" });
+
+  const passwordHash = await bcrypt.hash(password, 12);
+  const verificationToken = crypto.randomBytes(32).toString("hex");
+
+  const user = await User.create({
+    email,
+    passwordHash,
+    name,
+    verificationToken,
+    isVerified: false
+  });
+
+  // Send email
+  const verifyURL = `${CLIENT_URL}/verify?token=${verificationToken}`;
+
+  await transporter.sendMail({
+    from: process.env.EMAIL_USER,
+    to: email,
+    subject: "Verify your OneClickCV Pro account",
+    html: `
+      <h2>Verify your account</h2>
+      <p>Click the link below to activate your account:</p>
+      <a href="${verifyURL}" target="_blank">Verify Account</a>
+    `
+  });
+
+  res.json({ message: "Verification email sent" });
+});
+// --- VERIFICATION ROUTE ---
+app.get('/api/auth/verify', async (req, res) => {
+  const token = req.query.token;
+
+  const user = await User.findOne({ verificationToken: token });
+  if (!user) return res.status(400).json({ error: "Invalid token" });
+
+  user.isVerified = true;
+  user.verificationToken = null;
+  await user.save();
+
+  res.redirect(`${CLIENT_URL}/verified`);
+});
+// --- EMAIL LOGIN ROUTE ---
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  const user = await User.findOne({ email });
+  if (!user) return res.status(400).json({ error: "No user with that email" });
+  if (!user.isVerified) return res.status(401).json({ error: "Email not verified" });
+
+  const valid = await bcrypt.compare(password, user.passwordHash);
+  if (!valid) return res.status(401).json({ error: "Incorrect password" });
+
+  res.json({
+    id: user._id,
+    email: user.email,
+    name: user.name,
+    avatar: user.avatar,
+    credits: user.credits
+  });
+});
 
 // --- PAYMENT ENDPOINTS ---
 
