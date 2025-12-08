@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthPage } from './components/AuthPage';
 import { Dashboard } from './components/Dashboard';
 import { Editor } from './components/Editor';
@@ -24,7 +23,7 @@ export interface EditorActions {
   isTailored: () => boolean;
 }
 
-const AppRoutes: React.FC = () => {
+const App: React.FC = () => {
   const [view, setView] = useState<PageView>('editor');
   const [subPage, setSubPage] = useState<any>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -33,9 +32,11 @@ const AppRoutes: React.FC = () => {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [pendingResumeSave, setPendingResumeSave] = useState<SavedResume | null>(null);
+
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
+
   const editorActionsRef = useRef<EditorActions | null>(null);
 
   useEffect(() => {
@@ -81,7 +82,10 @@ const AppRoutes: React.FC = () => {
     try {
       await fetch(`${BACKEND_URL}/api/resumes`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userId
+        },
         body: JSON.stringify(resume)
       });
       fetchResumesFromDB(userId);
@@ -111,6 +115,7 @@ const AppRoutes: React.FC = () => {
     updateUserState(loggedInUser);
     fetchResumesFromDB(loggedInUser.id);
     setShowAuthModal(false);
+
     if (pendingResumeSave) {
       syncResumeToDB(pendingResumeSave, loggedInUser.id);
       setPendingResumeSave(null);
@@ -151,6 +156,28 @@ const AppRoutes: React.FC = () => {
     }
   };
 
+  const handleChatAcceptProposal = (index: number) => {
+    const msg = chatMessages[index];
+    if (msg.proposal && msg.proposal.status === 'pending') {
+      setChatMessages(prev => {
+        const newMsgs = [...prev];
+        newMsgs[index].proposal!.status = 'accepted';
+        return newMsgs;
+      });
+      if (editorActionsRef.current) {
+        editorActionsRef.current.updateResume(msg.proposal.data);
+      }
+    }
+  };
+
+  const handleChatDeclineProposal = (index: number) => {
+    setChatMessages(prev => {
+      const newMsgs = [...prev];
+      if (newMsgs[index].proposal) newMsgs[index].proposal!.status = 'declined';
+      return newMsgs;
+    });
+  };
+
   const handleCreateNew = () => {
     setCurrentResume(null);
     setView('editor');
@@ -178,7 +205,9 @@ const AppRoutes: React.FC = () => {
       setShowAuthModal(true);
       return;
     }
+
     syncResumeToDB(resume, user.id);
+
     const existingIndex = savedResumes.findIndex(r => r.id === resume.id);
     if (existingIndex >= 0) {
       const updated = [...savedResumes];
@@ -190,28 +219,47 @@ const AppRoutes: React.FC = () => {
     setCurrentResume(resume);
   };
 
-  const ContentComponent = (view === 'about') ? <AboutPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} /> :
-    (view === 'contact') ? <ContactPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} /> :
-    (view === 'product') ? <ProductPage type={subPage as ProductType} onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} onStart={() => handleNavigate('editor')} /> :
-    (view === 'blog') ? <BlogPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} initialPostId={subPage} /> :
-    (view === 'pricing') ? <PricingPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} onGetStarted={() => handleNavigate('editor')} /> :
-    (view === 'legal') ? <LegalPage type={subPage as LegalPageType} onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} /> :
-    ((view === 'dashboard' || view === 'home') && user) ? (
-      <Dashboard 
-        user={user} 
-        resumes={savedResumes} 
-        onCreate={handleCreateNew} 
-        onOpen={handleOpenResume} 
+  const handleAddCredits = (amount: number) => {
+    if (!user) return;
+    setShowPricingModal(false);
+  };
+
+  let ContentComponent;
+  if (window.location.pathname === '/verify') {
+    return <VerifyEmailPage />;
+  }
+
+  if (view === 'about') ContentComponent = <AboutPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} />;
+  else if (view === 'contact') ContentComponent = <ContactPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} />;
+  else if (view === 'product') ContentComponent = <ProductPage type={subPage as ProductType} onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} onStart={() => handleNavigate('editor')} />;
+  else if (view === 'blog') ContentComponent = <BlogPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} initialPostId={subPage} />;
+  else if (view === 'pricing') ContentComponent = <PricingPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} onGetStarted={() => handleNavigate('editor')} />;
+  else if (view === 'legal') ContentComponent = <LegalPage type={subPage as LegalPageType} onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} />;
+  else if ((view === 'dashboard' || view === 'home') && user) {
+    ContentComponent = (
+      <Dashboard
+        user={user}
+        resumes={savedResumes}
+        onCreate={handleCreateNew}
+        onOpen={handleOpenResume}
         onDelete={handleDeleteResume}
         onLogout={handleLogout}
         onAddCredits={() => setShowPricingModal(true)}
         onNavigate={handleNavigate}
       />
-    ) : (
-      <Editor 
-        initialResume={currentResume} 
-        onSave={handleSaveResume} 
-        onBack={() => user ? setView('dashboard') : setShowAuthModal(true)}
+    );
+  } else {
+    ContentComponent = (
+      <Editor
+        initialResume={currentResume}
+        onSave={handleSaveResume}
+        onBack={() => {
+          if (user) {
+            setView('dashboard');
+          } else {
+            setShowAuthModal(true);
+          }
+        }}
         isGuest={!user}
         onRequireAuth={() => setShowAuthModal(true)}
         currentUser={user}
@@ -220,39 +268,40 @@ const AppRoutes: React.FC = () => {
         onRegisterActions={(actions) => { editorActionsRef.current = actions; }}
       />
     );
+  }
 
   return (
     <>
       {ContentComponent}
-      <GlobalChatAssistant 
+
+      <GlobalChatAssistant
         messages={chatMessages}
         isOpen={isChatOpen}
         setIsOpen={setIsChatOpen}
         isLoading={isChatLoading}
         onSendMessage={handleChatSendMessage}
+        onAcceptProposal={handleChatAcceptProposal}
+        onDeclineProposal={handleChatDeclineProposal}
         hasActiveResume={view === 'editor' && !!editorActionsRef.current}
       />
-      {showAuthModal && <AuthPage onLogin={handleLogin} isModal onClose={() => setShowAuthModal(false)} />}
+
+      {showAuthModal && (
+        <AuthPage
+          onLogin={handleLogin}
+          isModal={true}
+          onClose={() => setShowAuthModal(false)}
+        />
+      )}
+
       {showPricingModal && user && (
-        <PricingModal 
+        <PricingModal
           onClose={() => setShowPricingModal(false)}
           currentCredits={user.credits}
-          onPurchase={() => setShowPricingModal(false)}
-          userId={user.id} 
+          onPurchase={handleAddCredits}
+          userId={user.id}
         />
       )}
     </>
-  );
-};
-
-const App: React.FC = () => {
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/verify" element={<VerifyEmailPage />} />
-        <Route path="/*" element={<AppRoutes />} />
-      </Routes>
-    </BrowserRouter>
   );
 };
 
