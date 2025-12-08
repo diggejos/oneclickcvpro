@@ -2,15 +2,14 @@
   "name": "oneclickcv-pro",
   "version": "1.0.0",
   "description": "Full Stack AI Resume Builder",
+  "type": "module",
   "main": "server.js",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "vite",
     "server": "node server.js",
     "build": "vite build",
-    "start": "node server.js",
-    "type": "module"
-
+    "start": "node server.js"
   },
   "dependencies": {
     "react": "^18.2.0",
