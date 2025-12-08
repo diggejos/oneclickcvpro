@@ -101,6 +101,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({
       return;
     }
 
+    google.accounts.id.disableAutoSelect();
+
     google.accounts.id.initialize({
       client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
       callback: async (credentialResponse: any) => {
@@ -135,7 +137,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({
           setError(err.message || 'Google login failed');
         }
       },
+      ux_mode: 'popup',
+      auto_select: false
     });
+
 
     // Show Google account chooser / one-tap
     google.accounts.id.prompt();
