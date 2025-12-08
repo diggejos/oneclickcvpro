@@ -19,7 +19,7 @@ const VerifyEmailPage: React.FC = () => {
     const verify = async () => {
       try {
         const response = await fetch(
-          `${import.meta.env.VITE_BACKEND_URL}/api/auth/verify-email?token=${token}`
+          `${import.meta.env.VITE_BACKEND_URL}/api/auth/verify?token=${token}`
         );
         const data = await response.json();
 
