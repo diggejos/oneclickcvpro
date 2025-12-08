@@ -1,7 +1,6 @@
-
+import cors from 'cors';
 require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
 const mongoose = require('mongoose');
 const { OAuth2Client } = require('google-auth-library');
 const bodyParser = require('body-parser');
@@ -51,7 +50,6 @@ app.use(cors({
   credentials: false, // we don't use cookies for this API
 }));
 
-import cors from 'cors';
 
 app.use(cors({
   origin: ['https://oneclickcvpro-frontend.onrender.com', 'http://localhost:5173', 'https://oneclickcvpro.com'],
