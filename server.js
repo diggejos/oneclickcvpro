@@ -217,7 +217,7 @@ app.delete('/api/resumes/:id', async (req, res) => {
 
 // --- Signup Route (Email + Password) ---
 
-const bcrypt = require("bcryptjs");
+import bcrypt from "bcryptjs";
 const crypto = require('crypto');
 
 app.post('/api/auth/register', async (req, res) => {
