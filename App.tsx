@@ -23,7 +23,6 @@ export interface EditorActions {
   isTailored: () => boolean;
 }
 
-<Route path="/verified" element={<VerifiedPage />} />
 
 
 const App: React.FC = () => {
