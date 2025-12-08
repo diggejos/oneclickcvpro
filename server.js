@@ -1,13 +1,14 @@
+import 'dotenv/config';
+import express from 'express';
+import mongoose from 'mongoose';
 import cors from 'cors';
-require('dotenv').config();
-const express = require('express');
-const mongoose = require('mongoose');
-const { OAuth2Client } = require('google-auth-library');
-const bodyParser = require('body-parser');
-const nodemailer = require('nodemailer');
+import bodyParser from 'body-parser';
+import nodemailer from 'nodemailer';
+import { OAuth2Client } from 'google-auth-library';
+import Stripe from 'stripe';
 
-// Initialize Stripe with Secret Key
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
 
 // --- EMAIL SETUP ---
 // Configure email transporter (using Gmail or your email service)
