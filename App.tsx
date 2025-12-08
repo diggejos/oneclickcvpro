@@ -12,6 +12,33 @@ import { ProductPage } from './components/ProductPage';
 import { GlobalChatAssistant } from './components/GlobalChatAssistant';
 import { unifiedChatAgent } from './services/geminiService';
 import { User, SavedResume, PageView, LegalPageType, ProductType, ChatMessage, ResumeData } from './types';
+import VerifyEmailPage from './pages/VerifyEmailPage';
+
+<Route path="/verify" element={<VerifyEmailPage />} />
+
+import { useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+
+export default function VerifyEmailPage() {
+  const [params] = useSearchParams();
+  const token = params.get('token');
+
+  useEffect(() => {
+    if (token) {
+      fetch(`${import.meta.env.VITE_BACKEND_URL}/api/auth/verify-email?token=${token}`)
+        .then(res => res.json())
+        .then(data => {
+          alert(data.message || 'Email verified!');
+        })
+        .catch(err => {
+          console.error(err);
+          alert('Verification failed.');
+        });
+    }
+  }, [token]);
+
+  return <p>Verifying your email...</p>;
+}
 
 // API CONSTANT
 // If VITE_BACKEND_URL is set (Production), use it. 
