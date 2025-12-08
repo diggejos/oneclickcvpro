@@ -12,7 +12,7 @@ import { ProductPage } from './components/ProductPage';
 import { GlobalChatAssistant } from './components/GlobalChatAssistant';
 import { unifiedChatAgent } from './services/geminiService';
 import { User, SavedResume, PageView, LegalPageType, ProductType, ChatMessage, ResumeData } from './types';
-import VerifyEmailPage from './pages/VerifyEmailPage';
+import VerifyEmailPage from './components/VerifyEmailPage';
 
 const BACKEND_URL = (import.meta as any).env.VITE_BACKEND_URL || "";
 const STORAGE_KEY_USER = 'oneclickcv_user';
