@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { User } from '../types';
 
-// Same pattern as in App.tsx
+// Backend base URL from env
 const BACKEND_URL = (import.meta as any).env.VITE_BACKEND_URL || '';
 
 interface AuthPageProps {
@@ -12,7 +12,11 @@ interface AuthPageProps {
 
 type Mode = 'login' | 'signup';
 
-export const AuthPage: React.FC<AuthPageProps> = ({ onLogin, isModal, onClose }) => {
+export const AuthPage: React.FC<AuthPageProps> = ({
+  onLogin,
+  isModal,
+  onClose,
+}) => {
   const [mode, setMode] = useState<Mode>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -38,11 +42,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin, isModal, onClose })
     setIsSubmitting(true);
     try {
       if (mode === 'signup') {
-        // 1) EMAIL SIGN UP: hits /api/auth/register on backend
+        // EMAIL SIGN UP
         const res = await fetch(`${BACKEND_URL}/api/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, email, password })
+          body: JSON.stringify({ name, email, password }),
         });
 
         const data = await res.json();
@@ -51,17 +55,16 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin, isModal, onClose })
           throw new Error(data.error || 'Registration failed');
         }
 
-        // We assume backend sends confirmation email.
         setInfo(
           'Check your inbox and confirm your email. Once confirmed, you can log in here.'
         );
         setMode('login');
       } else {
-        // 2) EMAIL LOGIN: hits /api/auth/login
+        // EMAIL LOGIN
         const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
+          body: JSON.stringify({ email, password }),
         });
 
         const data = await res.json();
@@ -70,7 +73,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin, isModal, onClose })
           throw new Error(data.error || 'Login failed');
         }
 
-        // data must match your User interface
         onLogin({
           id: data.id,
           email: data.email,
@@ -88,13 +90,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin, isModal, onClose })
     }
   };
 
-  // 3) GOOGLE LOGIN: calls /api/auth/google with the Google ID token
+  // GOOGLE LOGIN: calls /api/auth/google with the Google ID token
   const handleGoogleLogin = async () => {
     resetMessages();
 
-    // You probably already have GIS wired somewhere – this is the minimal pattern.
-    // If you already call google.accounts.id.prompt() elsewhere, you can keep that
-    // and just reuse the token→backend part below.
     // @ts-ignore
     const google = window.google;
     if (!google || !google.accounts || !google.accounts.id) {
@@ -102,23 +101,25 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin, isModal, onClose })
       return;
     }
 
-    google.accounts.id.prompt((notification: any) => {
-      if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-        setError('Google login was cancelled or failed.');
-      }
-    });
-
     google.accounts.id.initialize({
       client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
       callback: async (credentialResponse: any) => {
         try {
+          if (!credentialResponse || !credentialResponse.credential) {
+            setError('Google login was cancelled or failed.');
+            return;
+          }
+
           const res = await fetch(`${BACKEND_URL}/api/auth/google`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token: credentialResponse.credential }),
           });
+
           const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'Google login failed');
+          if (!res.ok) {
+            throw new Error(data.error || 'Google login failed');
+          }
 
           onLogin({
             id: data.id,
@@ -130,12 +131,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin, isModal, onClose })
 
           if (onClose) onClose();
         } catch (err: any) {
+          console.error('Google login error', err);
           setError(err.message || 'Google login failed');
         }
       },
     });
 
-    // Optionally render a one-tap or popup – here we just trigger it
+    // Show Google account chooser / one-tap
     google.accounts.id.prompt();
   };
 
