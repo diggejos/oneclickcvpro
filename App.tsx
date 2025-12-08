@@ -23,6 +23,9 @@ export interface EditorActions {
   isTailored: () => boolean;
 }
 
+<Route path="/verified" element={<VerifiedPage />} />
+
+
 const App: React.FC = () => {
   const [view, setView] = useState<PageView>('editor');
   const [subPage, setSubPage] = useState<any>(null);
