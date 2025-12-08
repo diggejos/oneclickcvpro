@@ -51,6 +51,13 @@ app.use(cors({
   credentials: false, // we don't use cookies for this API
 }));
 
+import cors from 'cors';
+
+app.use(cors({
+  origin: ['https://oneclickcvpro-frontend.onrender.com', 'http://localhost:5173', 'https://oneclickcvpro.com'],
+  credentials: true
+}));
+
 // --- DATABASE CONNECTION ---
 // You must set MONGODB_URI in your environment variables
 if (process.env.MONGODB_URI) {
