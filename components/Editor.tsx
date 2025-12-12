@@ -20,6 +20,7 @@ interface EditorProps {
   onAddCredits: () => void;
   onNavigate: (page: PageView, subPage?: any) => void;
   onRegisterActions: (actions: EditorActions | null) => void;
+  onSpendCredit: (reason: string) => Promise<number>;
 }
 
 export const Editor: React.FC<EditorProps> = ({ 
@@ -31,7 +32,8 @@ export const Editor: React.FC<EditorProps> = ({
   currentUser, 
   onAddCredits, 
   onNavigate,
-  onRegisterActions 
+  onRegisterActions,
+  onSpendCredit
 }) => {
   
   // Inputs
