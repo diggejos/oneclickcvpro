@@ -49,12 +49,12 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "1040938691698-o9k428s4
 // --- MIDDLEWARE ---
 // Stripe Webhook needs raw body, so we handle that specifically
 app.use((req, res, next) => {
-  if (req.originalUrl === '/webhook') {
-    next();
-  } else {
-    express.json()(req, res, next);
-  }
+  if (req.originalUrl === '/webhook') return next();
+
+  // allow bigger resumes (base64 PDFs/images can be large)
+  express.json({ limit: "25mb" })(req, res, next);
 });
+
 
 app.use(cors({
   origin: [
