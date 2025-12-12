@@ -50,15 +50,15 @@ app.use((req, res, next) => {
 });
 
 app.use(cors({
-  origin: true,       // reflect the request's origin
-  credentials: false, // we don't use cookies for this API
+  origin: [
+    "https://oneclickcvpro-frontend.onrender.com",
+    "http://localhost:5173",
+    "https://oneclickcvpro.com",
+    "http://localhost:3000"
+  ],
+  credentials: false, // you are not using cookies/sessions
 }));
 
-
-app.use(cors({
-  origin: ['https://oneclickcvpro-frontend.onrender.com', 'http://localhost:5173', 'https://oneclickcvpro.com'],
-  credentials: true
-}));
 
 // --- DATABASE CONNECTION ---
 // You must set MONGODB_URI in your environment variables
@@ -123,7 +123,7 @@ app.post('/api/auth/google', async (req, res) => {
     // Find or Create User
     let user = await User.findOne({ email });
     if (!user) {
-      user = new User({ googleId, email, name, avatar: picture });
+      user = new User({ googleId, email, name, avatar: picture, isVerified: true, verificationToken: null });
       await user.save();
     } else {
       // Update info if changed
@@ -258,17 +258,38 @@ app.post('/api/auth/register', async (req, res) => {
 });
 // --- VERIFICATION ROUTE ---
 app.get('/api/auth/verify', async (req, res) => {
-  const token = req.query.token;
+  try {
+    const token = req.query.token;
 
-  const user = await User.findOne({ verificationToken: token });
-  if (!user) return res.status(400).json({ error: "Invalid token" });
+    if (!token || typeof token !== "string") {
+      return res.status(400).json({ success: false, message: "Missing verification token." });
+    }
 
-  user.isVerified = true;
-  user.verificationToken = null;
-  await user.save();
+    const user = await User.findOne({ verificationToken: token });
 
-  res.redirect(`${CLIENT_URL}/verified`);
+    if (!user) {
+      return res.status(400).json({ success: false, message: "Invalid or expired verification link." });
+    }
+
+    // If already verified, don't error out
+    if (user.isVerified) {
+      return res.status(200).json({ success: true, message: "Email is already verified. You can log in." });
+    }
+
+    user.isVerified = true;
+    user.verificationToken = null;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Email verified successfully. You can now log in.",
+    });
+  } catch (err) {
+    console.error("VERIFY ERROR:", err);
+    return res.status(500).json({ success: false, message: "Server error while verifying email." });
+  }
 });
+
 // --- EMAIL LOGIN ROUTE ---
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
