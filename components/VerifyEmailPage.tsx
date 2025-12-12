@@ -1,5 +1,4 @@
-// src/pages/VerifyEmailPage.tsx
-
+// components/VerifyEmailPage.tsx
 import React, { useEffect, useState } from 'react';
 
 const VerifyEmailPage: React.FC = () => {
@@ -19,15 +18,16 @@ const VerifyEmailPage: React.FC = () => {
     const verify = async () => {
       try {
         const response = await fetch(
-          `${import.meta.env.VITE_BACKEND_URL}/api/auth/verify?token=${token}`
+          `${import.meta.env.VITE_BACKEND_URL}/api/auth/verify?token=${encodeURIComponent(token)}`
         );
-        const data = await response.json();
 
-        if (response.ok && data.success !== false) {
-          setMessage(data.message || 'Email successfully verified! You may now log in.');
+        const data = await response.json().catch(() => null);
+
+        if (response.ok && data?.success === true) {
+          setMessage(data?.message || 'Email successfully verified! You may now log in.');
           setStatus('success');
         } else {
-          setMessage(data.message || 'Verification failed. The link may have expired.');
+          setMessage(data?.message || 'Verification failed. The link may have expired.');
           setStatus('error');
         }
       } catch (error) {
@@ -40,12 +40,17 @@ const VerifyEmailPage: React.FC = () => {
     verify();
   }, []);
 
+  const color =
+    status === 'error'
+      ? 'text-red-500'
+      : status === 'success'
+      ? 'text-green-600'
+      : 'text-slate-600';
+
   return (
     <div className="flex flex-col items-center justify-center h-screen p-4 text-center">
       <h1 className="text-2xl font-semibold mb-4">Email Verification</h1>
-      <p className={`text-lg ${status === 'error' ? 'text-red-500' : 'text-green-600'}`}>
-        {message}
-      </p>
+      <p className={`text-lg ${color}`}>{message}</p>
     </div>
   );
 };
