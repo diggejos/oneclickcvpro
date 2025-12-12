@@ -272,6 +272,11 @@ app.post('/api/auth/register', async (req, res) => {
 
   // Send email
   const baseUrl = (CLIENT_URL || "").replace(/\/index\.html$/, "").replace(/\/+$/, "");
+  // Send email (ALWAYS create /verify?token=... link)
+  const baseUrl = (process.env.CLIENT_URL || "https://oneclickcvpro-frontend.onrender.com")
+    .replace(/\/index\.html$/i, "")
+    .replace(/\/+$/g, "");
+  
   const verifyURL = `${baseUrl}/verify?token=${verificationToken}`;
 
 
