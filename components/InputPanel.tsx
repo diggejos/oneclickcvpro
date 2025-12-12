@@ -23,6 +23,7 @@ interface InputPanelProps {
   onAddCredits: () => void;
   isGuest?: boolean;
   onRequireAuth: () => void;
+  onSpendCredit: (reason: string) => Promise<number>;
 }
 
 export const InputPanel: React.FC<InputPanelProps> = ({
@@ -42,7 +43,9 @@ export const InputPanel: React.FC<InputPanelProps> = ({
   userCredits,
   onAddCredits,
   isGuest,
-  onRequireAuth
+  #onRequireAuth,
+  onRequireAuth={onRequireAuth},
+  onSpendCredit={onSpendCredit}
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [singlePageMode, setSinglePageMode] = useState(false);
@@ -59,17 +62,27 @@ export const InputPanel: React.FC<InputPanelProps> = ({
   const CREDIT_COST = 1;
   const canAfford = (userCredits || 0) >= CREDIT_COST;
 
-  const handlePremiumAction = () => {
-    if (isGuest) {
-      onRequireAuth();
-      return;
-    }
-    if (canAfford) {
-      onGenerateTailored();
-    } else {
-      onAddCredits();
-    }
-  };
+  const handlePremiumAction = async () => {
+  if (isGuest) {
+    onRequireAuth();
+    return;
+  }
+
+  if (!canAfford) {
+    onAddCredits();
+    return;
+  }
+
+  try {
+    // Spend 1 credit BEFORE doing AI action
+    await onSpendCredit(hasJobDescription ? "ai_tailor" : "ai_refine_translate");
+    onGenerateTailored();
+  } catch (err) {
+    // Not enough credits or backend error
+    onAddCredits();
+  }
+};
+
 
   const handleImageClick = () => {
     fileInputRef.current?.click();
@@ -394,7 +407,25 @@ export const InputPanel: React.FC<InputPanelProps> = ({
             </label>
 
             <button
-              onClick={() => onPrint(singlePageMode)}
+              onClick={async () => {
+                if (isGuest) {
+                  onRequireAuth();
+                  return;
+                }
+              
+                if (!canAfford) {
+                  onAddCredits();
+                  return;
+                }
+              
+                try {
+                  await onSpendCredit("pdf_download");
+                  onPrint(singlePageMode);
+                } catch (err) {
+                  onAddCredits();
+                }
+              }}
+
               className="w-full py-3 px-4 rounded-lg flex items-center justify-center gap-2 font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 hover:text-indigo-600 transition-all"
             >
               <Download size={18} />
