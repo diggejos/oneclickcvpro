@@ -161,28 +161,30 @@ const App: React.FC = () => {
   };
 
   const spendCredit = async (reason: string) => {
-  if (!user) throw new Error("Not logged in");
-
-  const res = await fetch(`${BACKEND_URL}/api/credits/spend`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-user-id": user.id,
-    },
-    body: JSON.stringify({ reason }),
-  });
-
-  const data = await res.json().catch(() => null);
-
-  if (!res.ok) {
-    throw new Error(data?.error || "Not enough credits");
-  }
-
-  const updatedUser = { ...user, credits: data.credits };
-  updateUserState(updatedUser); // already updates state + localStorage
-
-  return data.credits;
-};
+    if (!user) throw Object.assign(new Error("Not logged in"), { status: 401 });
+  
+    const res = await fetch(`${BACKEND_URL}/api/credits/spend`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-id": user.id,
+      },
+      body: JSON.stringify({ reason }),
+    });
+  
+    const data = await res.json().catch(() => null);
+  
+    if (!res.ok) {
+      const err = new Error(data?.error || "Credit spend failed");
+      // attach status for UI logic
+      (err as any).status = res.status;
+      throw err;
+    }
+  
+    const updatedUser = { ...user, credits: data.credits };
+    updateUserState(updatedUser);
+    return data.credits;
+  };
 
 
   const handleChatAcceptProposal = (index: number) => {
