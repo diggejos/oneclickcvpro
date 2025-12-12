@@ -271,7 +271,9 @@ app.post('/api/auth/register', async (req, res) => {
   });
 
   // Send email
-  const verifyURL = `${CLIENT_URL}/verify?token=${verificationToken}`;
+  const baseUrl = (CLIENT_URL || "").replace(/\/index\.html$/, "").replace(/\/+$/, "");
+  const verifyURL = `${baseUrl}/verify?token=${verificationToken}`;
+
 
   await transporter.sendMail({
     from: process.env.EMAIL_USER,
