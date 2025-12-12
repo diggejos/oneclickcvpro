@@ -160,6 +160,31 @@ const App: React.FC = () => {
     }
   };
 
+  const spendCredit = async (reason: string) => {
+  if (!user) throw new Error("Not logged in");
+
+  const res = await fetch(`${BACKEND_URL}/api/credits/spend`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-user-id": user.id,
+    },
+    body: JSON.stringify({ reason }),
+  });
+
+  const data = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    throw new Error(data?.error || "Not enough credits");
+  }
+
+  const updatedUser = { ...user, credits: data.credits };
+  updateUserState(updatedUser); // already updates state + localStorage
+
+  return data.credits;
+};
+
+
   const handleChatAcceptProposal = (index: number) => {
     const msg = chatMessages[index];
     if (msg.proposal && msg.proposal.status === 'pending') {
@@ -273,6 +298,7 @@ const App: React.FC = () => {
         onAddCredits={() => setShowPricingModal(true)}
         onNavigate={handleNavigate}
         onRegisterActions={(actions) => { editorActionsRef.current = actions; }}
+        onSpendCredit={spendCredit}
       />
     );
   }
