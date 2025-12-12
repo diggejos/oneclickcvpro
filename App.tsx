@@ -227,7 +227,8 @@ const App: React.FC = () => {
   };
 
   let ContentComponent;
-  if (window.location.pathname === '/verify') {
+  const path = window.location.pathname.replace(/\/+$/, ""); // remove trailing slash
+  if (path === "/verify") {
     return <VerifyEmailPage />;
   }
 
