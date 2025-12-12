@@ -32,6 +32,22 @@ const transporter = nodemailer.createTransport({
 });
 
 
+
+// Test email connection (logs at startup)
+transporter.verify((error, success) => {
+  if (error) {
+    console.warn('⚠️ Email service not configured:', error.message);
+  } else {
+    console.log('✅ Email service ready');
+  }
+});
+
+const app = express();
+const PORT = process.env.PORT || 4242;
+const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "1040938691698-o9k428s47iskgq1vs6rk1dnc1857tnir.apps.googleusercontent.com";
+
+
 app.get("/api/users/me", async (req, res) => {
   try {
     const userIdRaw = req.headers["x-user-id"];
@@ -51,22 +67,6 @@ app.get("/api/users/me", async (req, res) => {
     return res.status(500).json({ error: "Failed to load user" });
   }
 });
-
-
-
-// Test email connection (logs at startup)
-transporter.verify((error, success) => {
-  if (error) {
-    console.warn('⚠️ Email service not configured:', error.message);
-  } else {
-    console.log('✅ Email service ready');
-  }
-});
-
-const app = express();
-const PORT = process.env.PORT || 4242;
-const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "1040938691698-o9k428s47iskgq1vs6rk1dnc1857tnir.apps.googleusercontent.com";
 
 // --- MIDDLEWARE ---
 // Stripe Webhook needs raw body, so we handle that specifically
