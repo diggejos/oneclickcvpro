@@ -60,27 +60,26 @@ export const InputPanel: React.FC<InputPanelProps> = ({
   // Cost is 1 credit for AI generation/tailoring
   const CREDIT_COST = 1;
   const canAfford = (userCredits || 0) >= CREDIT_COST;
-
+  
   const handlePremiumAction = async () => {
-  if (isGuest) {
-    onRequireAuth();
-    return;
-  }
+    if (isGuest) {
+      onRequireAuth();
+      return;
+    }
+  
+    try {
+      await onSpendCredit(hasJobDescription ? "ai_tailor" : "ai_refine_translate");
+      onGenerateTailored();
+    } catch (err: any) {
+      if (err?.status === 402) {
+        onAddCredits(); // only if truly insufficient credits
+      } else {
+        alert(err?.message || "Something went wrong while spending credits.");
+        console.error(err);
+      }
+    }
+  };
 
-  if (!canAfford) {
-    onAddCredits();
-    return;
-  }
-
-  try {
-    // Spend 1 credit BEFORE doing AI action
-    await onSpendCredit(hasJobDescription ? "ai_tailor" : "ai_refine_translate");
-    onGenerateTailored();
-  } catch (err) {
-    // Not enough credits or backend error
-    onAddCredits();
-  }
-};
 
 
   const handleImageClick = () => {
@@ -406,24 +405,18 @@ export const InputPanel: React.FC<InputPanelProps> = ({
             </label>
 
             <button
-              onClick={async () => {
-                if (isGuest) {
-                  onRequireAuth();
-                  return;
-                }
-              
-                if (!canAfford) {
-                  onAddCredits();
-                  return;
-                }
-              
-                try {
-                  await onSpendCredit("pdf_download");
-                  onPrint(singlePageMode);
-                } catch (err) {
-                  onAddCredits();
-                }
-              }}
+            onClick={async () => {
+              if (isGuest) { onRequireAuth(); return; }
+            
+              try {
+                await onSpendCredit("pdf_download");
+                onPrint(singlePageMode);
+              } catch (err: any) {
+                if (err?.status === 402) onAddCredits();
+                else { alert(err?.message || "PDF credit charge failed."); console.error(err); }
+              }
+            }}
+
 
               className="w-full py-3 px-4 rounded-lg flex items-center justify-center gap-2 font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 hover:text-indigo-600 transition-all"
             >
