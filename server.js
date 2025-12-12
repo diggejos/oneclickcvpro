@@ -273,11 +273,11 @@ app.post('/api/auth/register', async (req, res) => {
     });
 
     // --- BUILD VERIFICATION URL (NO /index.html EVER) ---
-    const baseUrl = (process.env.CLIENT_URL || "https://oneclickcvpro-frontend.onrender.com")
-      .replace(/\/index\.html$/i, "")
+    const baseBackendUrl = (process.env.BACKEND_URL || "https://oneclickcvpro-backend.onrender.com")
       .replace(/\/+$/g, "");
+    
+    const verifyURL = `${baseBackendUrl}/api/auth/verify?token=${verificationToken}`;
 
-    const verifyURL = `${baseUrl}/verify?token=${verificationToken}`;
 
     console.log("VERIFY URL SENT:", verifyURL);
 
@@ -308,33 +308,29 @@ app.get('/api/auth/verify', async (req, res) => {
     const token = req.query.token;
 
     if (!token || typeof token !== "string") {
-      return res.status(400).json({ success: false, message: "Missing verification token." });
+      return res.status(400).send("Missing token.");
     }
 
     const user = await User.findOne({ verificationToken: token });
-
     if (!user) {
-      return res.status(400).json({ success: false, message: "Invalid or expired verification link." });
-    }
-
-    // If already verified, don't error out
-    if (user.isVerified) {
-      return res.status(200).json({ success: true, message: "Email is already verified. You can log in." });
+      return res.status(400).send("Invalid or expired token.");
     }
 
     user.isVerified = true;
     user.verificationToken = null;
     await user.save();
 
-    return res.status(200).json({
-      success: true,
-      message: "Email verified successfully. You can now log in.",
-    });
+    const baseClientUrl = (process.env.CLIENT_URL || "https://oneclickcvpro.com")
+      .replace(/\/index\.html$/i, "")
+      .replace(/\/+$/g, "");
+
+    return res.redirect(`${baseClientUrl}/verified`);
   } catch (err) {
     console.error("VERIFY ERROR:", err);
-    return res.status(500).json({ success: false, message: "Server error while verifying email." });
+    return res.status(500).send("Server error.");
   }
 });
+
 
 // --- EMAIL LOGIN ROUTE ---
 app.post('/api/auth/login', async (req, res) => {
