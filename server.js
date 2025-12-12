@@ -9,6 +9,13 @@ import Stripe from 'stripe';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
+const toObjectId = (id) => {
+  try {
+    return new mongoose.Types.ObjectId(id);
+  } catch {
+    return null;
+  }
+};
 
 // --- EMAIL SETUP ---
 // Configure email transporter (using Gmail or your email service)
@@ -102,6 +109,8 @@ const resumeSchema = new mongoose.Schema({
   profileImage: String
 });
 
+resumeSchema.index({ userId: 1, resumeId: 1 }, { unique: true });
+
 const User = mongoose.model('User', userSchema);
 const Resume = mongoose.model('Resume', resumeSchema);
 
@@ -150,13 +159,16 @@ app.post('/api/auth/google', async (req, res) => {
 // --- RESUME SYNC ENDPOINTS ---
 
 app.get('/api/resumes', async (req, res) => {
-  const userId = req.headers['x-user-id']; // Simple header auth for this demo
-  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+  const userIdRaw = req.headers['x-user-id'];
+  if (!userIdRaw) return res.status(401).json({ error: "Unauthorized" });
+
+  const userId = toObjectId(userIdRaw);
+  if (!userId) return res.status(400).json({ error: "Invalid user id" });
 
   try {
     const resumes = await Resume.find({ userId });
-    // Transform back to frontend shape if needed
-    const frontendResumes = resumes.map(r => ({
+
+    res.json(resumes.map(r => ({
       id: r.resumeId,
       title: r.title,
       lastModified: r.lastModified,
@@ -166,22 +178,32 @@ app.get('/api/resumes', async (req, res) => {
       tailoredResumeData: r.tailoredResumeData,
       config: r.config,
       profileImage: r.profileImage
-    }));
-    res.json(frontendResumes);
+    })));
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: "Failed to fetch resumes" });
   }
 });
 
+
 app.post('/api/resumes', async (req, res) => {
-  const userId = req.headers['x-user-id'];
+  const userIdRaw = req.headers['x-user-id'];
   const resumeData = req.body;
 
-  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+  if (!userIdRaw) return res.status(401).json({ error: "Unauthorized" });
+
+  const userId = toObjectId(userIdRaw);
+  if (!userId) return res.status(400).json({ error: "Invalid user id" });
+
+  if (!resumeData || !resumeData.id) {
+    console.warn("❌ Missing resumeData.id", { userIdRaw, resumeData });
+    return res.status(400).json({ error: "Missing resume id (resumeData.id)" });
+  }
+
+  console.log("SAVE RESUME", { userId: userIdRaw, resumeId: resumeData.id, title: resumeData.title });
 
   try {
-    // Upsert (Update if exists, Insert if new) based on resumeId + userId
-    await Resume.findOneAndUpdate(
+    const updated = await Resume.findOneAndUpdate(
       { userId, resumeId: resumeData.id },
       {
         userId,
@@ -195,27 +217,35 @@ app.post('/api/resumes', async (req, res) => {
         config: resumeData.config,
         profileImage: resumeData.profileImage
       },
-      { upsert: true, new: true }
+      { upsert: true, new: true, setDefaultsOnInsert: true }
     );
-    res.json({ success: true });
+
+    return res.json({ success: true, resumeId: updated.resumeId });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to save resume" });
+    console.error("❌ Failed to save resume:", error);
+    return res.status(500).json({ error: "Failed to save resume" });
   }
 });
 
+
 app.delete('/api/resumes/:id', async (req, res) => {
-  const userId = req.headers['x-user-id'];
+  const userIdRaw = req.headers['x-user-id'];
   const resumeId = req.params.id;
-  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  if (!userIdRaw) return res.status(401).json({ error: "Unauthorized" });
+
+  const userId = toObjectId(userIdRaw);
+  if (!userId) return res.status(400).json({ error: "Invalid user id" });
 
   try {
     await Resume.deleteOne({ userId, resumeId });
     res.json({ success: true });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: "Delete failed" });
   }
 });
+
 
 
 // --- Signup Route (Email + Password) ---
