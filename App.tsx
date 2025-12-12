@@ -13,6 +13,8 @@ import { GlobalChatAssistant } from './components/GlobalChatAssistant';
 import { unifiedChatAgent } from './services/geminiService';
 import { User, SavedResume, PageView, LegalPageType, ProductType, ChatMessage, ResumeData } from './types';
 import VerifyEmailPage from './components/VerifyEmailPage';
+import VerifiedPage from './components/VerifiedPage';
+
 
 const BACKEND_URL = (import.meta as any).env.VITE_BACKEND_URL || "";
 const STORAGE_KEY_USER = 'oneclickcv_user';
@@ -228,9 +230,11 @@ const App: React.FC = () => {
 
   let ContentComponent;
   const path = window.location.pathname.replace(/\/+$/, ""); // remove trailing slash
-  if (path === "/verify") {
-    return <VerifyEmailPage />;
+
+  if (path === "/verified") {
+    return <VerifiedPage />;
   }
+
 
   if (view === 'about') ContentComponent = <AboutPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} />;
   else if (view === 'contact') ContentComponent = <ContactPage onBack={() => handleNavigate(user ? 'dashboard' : 'editor')} />;
