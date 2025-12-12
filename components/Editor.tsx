@@ -284,6 +284,7 @@ export const Editor: React.FC<EditorProps> = ({
             onAddCredits={onAddCredits}
             isGuest={isGuest}
             onRequireAuth={onRequireAuth}
+            onSpendCredit={onSpendCredit}
           />
         </div>
       </div>
