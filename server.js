@@ -32,6 +32,28 @@ const transporter = nodemailer.createTransport({
 });
 
 
+app.get("/api/users/me", async (req, res) => {
+  try {
+    const userIdRaw = req.headers["x-user-id"];
+    if (!userIdRaw) return res.status(401).json({ error: "Unauthorized" });
+
+    const userId = (() => {
+      try { return new mongoose.Types.ObjectId(userIdRaw); } catch { return null; }
+    })();
+    if (!userId) return res.status(400).json({ error: "Invalid user id" });
+
+    const user = await User.findById(userId).select("email name avatar credits");
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    return res.json({ credits: user.credits });
+  } catch (err) {
+    console.error("ME ERROR:", err);
+    return res.status(500).json({ error: "Failed to load user" });
+  }
+});
+
+
+
 // Test email connection (logs at startup)
 transporter.verify((error, success) => {
   if (error) {
