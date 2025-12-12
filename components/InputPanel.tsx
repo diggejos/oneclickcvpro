@@ -43,9 +43,8 @@ export const InputPanel: React.FC<InputPanelProps> = ({
   userCredits,
   onAddCredits,
   isGuest,
-  #onRequireAuth,
-  onRequireAuth={onRequireAuth},
-  onSpendCredit={onSpendCredit}
+  onRequireAuth,
+  onSpendCredit
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [singlePageMode, setSinglePageMode] = useState(false);
