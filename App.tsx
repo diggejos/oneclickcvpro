@@ -50,13 +50,29 @@ const App: React.FC = () => {
       setUser(parsedUser);
       fetchResumesFromDB(parsedUser.id);
     }
-
+  
     const params = new URLSearchParams(window.location.search);
     if (params.get('success') === 'true') {
-      alert("Payment Successful! Credits have been added to your account.");
-      window.history.replaceState({}, '', window.location.pathname);
+      (async () => {
+        try {
+          const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
+          if (current?.id) {
+            const res = await fetch(`${BACKEND_URL}/api/users/me`, {
+              headers: { "x-user-id": current.id }
+            });
+            const data = await res.json();
+            if (res.ok && typeof data.credits === "number") {
+              updateUserState({ ...current, credits: data.credits });
+            }
+          }
+          alert("Payment Successful! Credits have been added to your account.");
+        } finally {
+          window.history.replaceState({}, '', window.location.pathname);
+        }
+      })();
     }
   }, []);
+
 
   useEffect(() => {
     let title = "OneClickCVPro | Instant AI Resume Builder";
