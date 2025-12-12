@@ -249,49 +249,58 @@ app.delete('/api/resumes/:id', async (req, res) => {
 
 
 // --- Signup Route (Email + Password) ---
-
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 
 app.post('/api/auth/register', async (req, res) => {
-  const { email, password, name } = req.body;
+  try {
+    const { email, password, name } = req.body;
 
-  const existing = await User.findOne({ email });
-  if (existing) return res.status(400).json({ error: "Email already used" });
+    const existing = await User.findOne({ email });
+    if (existing) {
+      return res.status(400).json({ error: "Email already used" });
+    }
 
-  const passwordHash = await bcrypt.hash(password, 12);
-  const verificationToken = crypto.randomBytes(32).toString("hex");
+    const passwordHash = await bcrypt.hash(password, 12);
+    const verificationToken = crypto.randomBytes(32).toString("hex");
 
-  const user = await User.create({
-    email,
-    passwordHash,
-    name,
-    verificationToken,
-    isVerified: false
-  });
+    await User.create({
+      email,
+      passwordHash,
+      name,
+      verificationToken,
+      isVerified: false
+    });
 
-  // Send email
-  const baseUrl = (CLIENT_URL || "").replace(/\/index\.html$/, "").replace(/\/+$/, "");
-  // Send email (ALWAYS create /verify?token=... link)
-  const baseUrl = (process.env.CLIENT_URL || "https://oneclickcvpro-frontend.onrender.com")
-    .replace(/\/index\.html$/i, "")
-    .replace(/\/+$/g, "");
-  
-  const verifyURL = `${baseUrl}/verify?token=${verificationToken}`;
+    // --- BUILD VERIFICATION URL (NO /index.html EVER) ---
+    const baseUrl = (process.env.CLIENT_URL || "https://oneclickcvpro-frontend.onrender.com")
+      .replace(/\/index\.html$/i, "")
+      .replace(/\/+$/g, "");
 
+    const verifyURL = `${baseUrl}/verify?token=${verificationToken}`;
 
-  await transporter.sendMail({
-    from: process.env.EMAIL_USER,
-    to: email,
-    subject: "Verify your OneClickCV Pro account",
-    html: `
-      <h2>Verify your account</h2>
-      <p>Click the link below to activate your account:</p>
-      <a href="${verifyURL}" target="_blank">Verify Account</a>
-    `
-  });
+    console.log("VERIFY URL SENT:", verifyURL);
 
-  res.json({ message: "Verification email sent" });
+    // --- SEND EMAIL ---
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: "Verify your OneClickCV Pro account",
+      html: `
+        <h2>Verify your account</h2>
+        <p>Click the link below to activate your account:</p>
+        <a href="${verifyURL}" target="_blank" rel="noopener noreferrer">
+          Verify Account
+        </a>
+      `
+    });
+
+    return res.json({ message: "Verification email sent" });
+
+  } catch (err) {
+    console.error("REGISTER ERROR:", err);
+    return res.status(500).json({ error: "Registration failed" });
+  }
 });
 // --- VERIFICATION ROUTE ---
 app.get('/api/auth/verify', async (req, res) => {
