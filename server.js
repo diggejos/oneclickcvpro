@@ -92,7 +92,7 @@ const userSchema = new mongoose.Schema({
   name: String,
   avatar: String,
 
-  credits: { type: Number, default: 5 },
+  credits: { type: Number, default: 1 },
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -350,6 +350,40 @@ app.post('/api/auth/login', async (req, res) => {
     avatar: user.avatar,
     credits: user.credits
   });
+});
+// --- Credits management ---
+app.post("/api/credits/spend", async (req, res) => {
+  try {
+    const userIdRaw = req.headers["x-user-id"];
+    const { reason } = req.body || {};
+
+    if (!userIdRaw) return res.status(401).json({ error: "Unauthorized" });
+
+    const userId = (() => {
+      try { return new mongoose.Types.ObjectId(userIdRaw); } catch { return null; }
+    })();
+    if (!userId) return res.status(400).json({ error: "Invalid user id" });
+
+    // Atomic decrement only if credits > 0
+    const user = await User.findOneAndUpdate(
+      { _id: userId, credits: { $gt: 0 } },
+      { $inc: { credits: -1 } },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(402).json({ error: "Not enough credits" });
+    }
+
+    return res.json({
+      success: true,
+      credits: user.credits,
+      reason: reason || null
+    });
+  } catch (err) {
+    console.error("CREDITS SPEND ERROR:", err);
+    return res.status(500).json({ error: "Failed to spend credit" });
+  }
 });
 
 // --- PAYMENT ENDPOINTS ---
