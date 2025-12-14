@@ -44,6 +44,7 @@ const App: React.FC = () => {
   const editorActionsRef = useRef<EditorActions | null>(null);
 
   useEffect(() => {
+    // 1) Restore session
     const storedUser = localStorage.getItem(STORAGE_KEY_USER);
     if (storedUser) {
       const parsedUser = JSON.parse(storedUser);
@@ -51,55 +52,61 @@ const App: React.FC = () => {
       fetchResumesFromDB(parsedUser.id);
     }
   
+    // 2) Stripe success redirect -> poll backend until webhook updated credits
     const params = new URLSearchParams(window.location.search);
-    if (params.get('success') === 'true') {
-    (async () => {
-      const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
-      if (!current?.id) {
-        alert("Payment successful. Please log in again to refresh credits.");
-        window.history.replaceState({}, "", window.location.pathname);
-        return;
-      }
+    if (params.get("success") === "true") {
+      (async () => {
+        const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
   
-      const before = Number(current.credits || 0);
-  
-      // Poll for up to ~10 seconds until webhook updated credits
-      let latest = before;
-      for (let attempt = 0; attempt < 10; attempt++) {
-        try {
-          const res = await fetch(`${BACKEND_URL}/api/users/me`, {
-            headers: { "x-user-id": current.id },
-          });
-          const data = await res.json();
-  
-          if (res.ok && typeof data.credits === "number") {
-            latest = data.credits;
-  
-            // Update state & localStorage every time we get a number
-            updateUserState({ ...current, credits: latest });
-  
-            // Stop early once credits increased
-            if (latest > before) break;
-          }
-        } catch (e) {
-          // ignore transient errors
+        if (!current?.id) {
+          alert("Payment successful. Please log in again to refresh credits.");
+          window.history.replaceState({}, "", window.location.pathname);
+          return;
         }
   
-        // wait 1s before next attempt
-        await new Promise(r => setTimeout(r, 1000));
-      }
+        const before = Number(current.credits || 0);
+        let latest = before;
   
-      alert(
-        latest > before
-          ? `Payment successful! Credits updated: ${before} → ${latest}`
-          : "Payment successful! Credits will appear in a moment (refresh if needed)."
-      );
+        // IMPORTANT: we keep a baseUser object that we update so we don't overwrite other fields
+        let baseUser = current;
   
-      window.history.replaceState({}, "", window.location.pathname);
-    })();
-  };
-
-
+        // Poll for up to ~10 seconds until webhook updated credits
+        for (let attempt = 0; attempt < 10; attempt++) {
+          try {
+            const res = await fetch(`${BACKEND_URL}/api/users/me`, {
+              headers: { "x-user-id": current.id },
+            });
+  
+            const data = await res.json().catch(() => ({}));
+  
+            if (res.ok && typeof (data as any).credits === "number") {
+              latest = (data as any).credits;
+  
+              baseUser = { ...baseUser, credits: latest };
+              updateUserState(baseUser);
+  
+              // Stop early once credits increased
+              if (latest > before) break;
+            }
+          } catch {
+            // ignore transient errors
+          }
+  
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+  
+        alert(
+          latest > before
+            ? `Payment successful! Credits updated: ${before} → ${latest}`
+            : "Payment successful! Credits will appear in a moment (refresh if needed)."
+        );
+  
+        // remove ?success=true from URL
+        window.history.replaceState({}, "", window.location.pathname);
+      })();
+    }
+  }, []);
+  
 
 
   useEffect(() => {
