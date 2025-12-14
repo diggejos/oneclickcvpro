@@ -14,7 +14,7 @@ import { unifiedChatAgent } from './services/geminiService';
 import { User, SavedResume, PageView, LegalPageType, ProductType, ChatMessage, ResumeData } from './types';
 import VerifyEmailPage from './components/VerifyEmailPage';
 import VerifiedPage from './components/VerifiedPage';
-import { Navbar } from "./components/Navbar";
+import { TopNav } from "./components/TopNav";
 
 
 
