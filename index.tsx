@@ -10,7 +10,7 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
-x
+
 root.render(
   <React.StrictMode>
     <BrowserRouter>
