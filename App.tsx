@@ -46,60 +46,120 @@ const App: React.FC = () => {
   const editorActionsRef = useRef<EditorActions | null>(null);
 
   useEffect(() => {
+    const log = (...args: any[]) => console.log("[stripe-success]", ...args);
+  
+    // 1) user aus localStorage laden
     const storedUser = localStorage.getItem(STORAGE_KEY_USER);
     if (storedUser) {
       const parsedUser = JSON.parse(storedUser);
       setUser(parsedUser);
       fetchResumesFromDB(parsedUser.id);
-      // Optional: direkt einmal Credits frisch holen
-      refreshCredits().catch(() => {});
     }
   
     const params = new URLSearchParams(window.location.search);
+    const isSuccess = params.get("success") === "true";
   
-    // 1) Nach Stripe success sofort pollen (Webhook braucht manchmal länger)
-    if (params.get("success") === "true") {
+    // Helper: user fresh holen
+    const fetchMe = async (userId: string) => {
+      if (!BACKEND_URL) {
+        throw new Error("VITE_BACKEND_URL is empty in frontend build");
+      }
+  
+      const res = await fetch(`${BACKEND_URL}/api/users/me`, {
+        headers: { "x-user-id": userId },
+        cache: "no-store",
+      });
+  
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Failed to fetch /api/users/me");
+  
+      // robust: credits können an verschiedenen Orten/als string kommen
+      const creditsRaw = data?.credits ?? data?.user?.credits ?? data?.data?.credits;
+      const credits = Number(creditsRaw);
+  
+      return { data, credits };
+    };
+  
+    // Helper: state + localStorage updaten
+    const updateCreditsInState = (newCredits: number) => {
+      const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
+      if (!current?.id) return;
+  
+      const updated = { ...current, credits: newCredits };
+      setUser(updated);
+      localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updated));
+    };
+  
+    // 2) Wenn success=true → poll credits bis webhook durch ist
+    if (isSuccess) {
       (async () => {
-        const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
-        if (!current?.id) return;
+        try {
+          const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
+          log("success=true detected", { current, BACKEND_URL });
   
-        const before = Number(current.credits || 0);
-        let latest = before;
-  
-        for (let attempt = 0; attempt < 30; attempt++) { // statt 10 -> 30
-          try {
-            const { credits } = await fetchMe(current.id);
-            latest = credits;
-  
-            if (Number.isFinite(latest)) {
-              updateUserState({ ...current, credits: latest });
-              if (latest > before) break;
-            }
-          } catch {
-            // ignore
+          if (!current?.id) {
+            alert("Payment successful. Please log in again to refresh credits.");
+            window.history.replaceState({}, "", window.location.pathname);
+            return;
           }
   
-          await new Promise((r) => setTimeout(r, 1000));
-        }
+          const before = Number(current.credits || 0);
+          let latest = before;
   
-        // Query entfernen
-        window.history.replaceState({}, "", window.location.pathname);
+          // bis zu 30s pollen
+          for (let attempt = 0; attempt < 30; attempt++) {
+            try {
+              const { credits, data } = await fetchMe(current.id);
+              log("me response", { attempt, credits, data });
+  
+              if (Number.isFinite(credits)) {
+                latest = credits;
+                updateCreditsInState(latest);
+  
+                if (latest > before) {
+                  log("credits increased", { before, latest });
+                  break;
+                }
+              }
+            } catch (e: any) {
+              log("poll error", e?.message || e);
+            }
+  
+            await new Promise((r) => setTimeout(r, 1000));
+          }
+  
+          // Query entfernen
+          window.history.replaceState({}, "", window.location.pathname);
+  
+          // Optional: Feedback
+          if (latest > before) {
+            alert(`Payment successful! Credits updated: ${before} → ${latest}`);
+          } else {
+            alert("Payment successful! Credits will appear shortly. (If not, reload once.)");
+          }
+        } catch (e: any) {
+          console.error("[stripe-success] fatal", e);
+          alert(`Payment success handler failed: ${e?.message || e}`);
+          window.history.replaceState({}, "", window.location.pathname);
+        }
       })();
     }
   
-    // 2) Wenn User von Stripe zurückkommt, ist oft "focus" der Moment wo es aktualisiert werden soll
-    const onFocus = () => refreshCredits().catch(() => {});
-    const onVis = () => {
-      if (document.visibilityState === "visible") refreshCredits().catch(() => {});
+    // 3) Zusätzlich: wenn Tab wieder aktiv wird, nochmal refreshen (Stripe redirect/focus)
+    const onFocus = async () => {
+      try {
+        const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
+        if (!current?.id) return;
+        const { credits } = await fetchMe(current.id);
+        if (Number.isFinite(credits)) updateCreditsInState(credits);
+      } catch (e) {
+        // bewusst kein silent swallow im Debug
+        console.warn("[stripe-success] focus refresh failed", e);
+      }
     };
   
     window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onVis);
-  
-    return () => {
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onVis);
-    };
+    return () => window.removeEventListener("focus", onFocus);
   }, []);
 
 
