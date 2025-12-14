@@ -53,25 +53,53 @@ const App: React.FC = () => {
   
     const params = new URLSearchParams(window.location.search);
     if (params.get('success') === 'true') {
-      (async () => {
+    (async () => {
+      const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
+      if (!current?.id) {
+        alert("Payment successful. Please log in again to refresh credits.");
+        window.history.replaceState({}, "", window.location.pathname);
+        return;
+      }
+  
+      const before = Number(current.credits || 0);
+  
+      // Poll for up to ~10 seconds until webhook updated credits
+      let latest = before;
+      for (let attempt = 0; attempt < 10; attempt++) {
         try {
-          const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
-          if (current?.id) {
-            const res = await fetch(`${BACKEND_URL}/api/users/me`, {
-              headers: { "x-user-id": current.id }
-            });
-            const data = await res.json();
-            if (res.ok && typeof data.credits === "number") {
-              updateUserState({ ...current, credits: data.credits });
-            }
+          const res = await fetch(`${BACKEND_URL}/api/users/me`, {
+            headers: { "x-user-id": current.id },
+          });
+          const data = await res.json();
+  
+          if (res.ok && typeof data.credits === "number") {
+            latest = data.credits;
+  
+            // Update state & localStorage every time we get a number
+            updateUserState({ ...current, credits: latest });
+  
+            // Stop early once credits increased
+            if (latest > before) break;
           }
-          alert("Payment Successful! Credits have been added to your account.");
-        } finally {
-          window.history.replaceState({}, '', window.location.pathname);
+        } catch (e) {
+          // ignore transient errors
         }
-      })();
-    }
-  }, []);
+  
+        // wait 1s before next attempt
+        await new Promise(r => setTimeout(r, 1000));
+      }
+  
+      alert(
+        latest > before
+          ? `Payment successful! Credits updated: ${before} → ${latest}`
+          : "Payment successful! Credits will appear in a moment (refresh if needed)."
+      );
+  
+      window.history.replaceState({}, "", window.location.pathname);
+    })();
+  }
+
+
 
 
   useEffect(() => {
