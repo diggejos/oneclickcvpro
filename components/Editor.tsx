@@ -233,61 +233,68 @@ export const Editor: React.FC<EditorProps> = ({
     }
   };
 
-  return (
-    <div className="min-h-screen pt-14 bg-slate-100 flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">
-      <div className="w-full md:w-[400px] flex-shrink-0 h-[40vh] md:h-screen md:sticky md:top-0 z-10 shadow-xl bg-white flex flex-col border-r border-slate-200">
-        {/* Header with Title and Save */}
-        <div className="p-4 border-b border-slate-200 bg-white flex items-center justify-between gap-2">
-           <div className="flex items-center gap-2">
-             <button onClick={handleBack} className="text-slate-500 hover:text-slate-800 p-1 rounded hover:bg-slate-100 flex-shrink-0" title="Back to Dashboard">
-               <ArrowLeft size={20} />
-             </button>
-             <Logo iconOnly className="w-8 h-8" />
-           </div>
-           
-           <input 
-             value={resumeTitle}
-             onChange={(e) => setResumeTitle(e.target.value)}
-             className="text-sm font-bold text-slate-800 bg-transparent border-none focus:ring-0 w-full min-w-0 truncate mx-2"
-             placeholder="Untitled Resume"
-           />
-           
-           <div className="flex items-center gap-2 flex-shrink-0">
-             {isGuest ? (
-               <button onClick={onRequireAuth} className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded border border-indigo-200 flex items-center gap-1">
-                 <LogIn size={12} /> Login
-               </button>
-             ) : (
-                <button onClick={triggerSave} className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded border border-indigo-200 flex items-center gap-1">
-                  Save
-                </button>
-             )}
-           </div>
-        </div>
+return (
+  <div className="min-h-[calc(100vh-56px)] bg-slate-100 flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">
+    <div className="w-full md:w-[400px] flex-shrink-0 h-[40vh] md:h-[calc(100vh-56px)] md:sticky md:top-[56px] z-10 bg-white flex flex-col border-r border-slate-200">
 
-        <div className="flex-grow overflow-y-auto">
-          <InputPanel 
-            baseResumeInput={baseResumeInput}
-            setBaseResumeInput={setBaseResumeInput}
-            jobDescriptionInput={jobDescriptionInput}
-            setJobDescriptionInput={setJobDescriptionInput}
-            onGenerateBase={handleGenerateBase}
-            onGenerateTailored={handleGenerateTailored}
-            onPrint={handlePrint}
-            appState={appState}
-            resetBase={handleResetBase}
-            config={config}
-            setConfig={setConfig}
-            onImageUpload={handleImageUpload}
-            profileImage={profileImage}
-            userCredits={currentUser?.credits}
-            onAddCredits={onAddCredits}
-            isGuest={isGuest}
-            onRequireAuth={onRequireAuth}
-            onSpendCredit={onSpendCredit}
+      {/* Panel Header (NOT a second navbar) */}
+      <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <Logo iconOnly className="w-7 h-7 flex-shrink-0" />
+
+          <input
+            value={resumeTitle}
+            onChange={(e) => setResumeTitle(e.target.value)}
+            className="text-sm font-semibold text-slate-800 bg-transparent border-none focus:ring-0 w-full min-w-0 truncate"
+            placeholder="Untitled Resume"
           />
         </div>
+
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {isGuest ? (
+            <button
+              onClick={onRequireAuth}
+              className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded border border-indigo-200 flex items-center gap-1"
+            >
+              <LogIn size={12} /> Login
+            </button>
+          ) : (
+            <button
+              onClick={triggerSave}
+              className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded border border-indigo-200"
+            >
+              Save
+            </button>
+          )}
+        </div>
       </div>
+
+      <div className="flex-grow overflow-y-auto">
+        <InputPanel
+          baseResumeInput={baseResumeInput}
+          setBaseResumeInput={setBaseResumeInput}
+          jobDescriptionInput={jobDescriptionInput}
+          setJobDescriptionInput={setJobDescriptionInput}
+          onGenerateBase={handleGenerateBase}
+          onGenerateTailored={handleGenerateTailored}
+          onPrint={handlePrint}
+          appState={appState}
+          resetBase={handleResetBase}
+          config={config}
+          setConfig={setConfig}
+          onImageUpload={handleImageUpload}
+          profileImage={profileImage}
+          userCredits={currentUser?.credits}
+          onAddCredits={onAddCredits}
+          isGuest={isGuest}
+          onRequireAuth={onRequireAuth}
+          onSpendCredit={onSpendCredit}
+        />
+      </div>
+    </div>
+
+    {/* rest of your right-side preview stays unchanged */}
+
 
       <div className="flex-grow h-[60vh] md:h-screen overflow-y-auto bg-slate-200/50 relative">
         {/* SEO LANDING CONTENT - Visible when no data */}
