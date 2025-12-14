@@ -296,11 +296,11 @@ return (
     {/* rest of your right-side preview stays unchanged */}
 
 
-      <div className="flex-grow h-[60vh] md:h-screen overflow-y-auto bg-slate-200/50 relative">
+      <div className="flex-grow h-[60vh] md:h-[calc(100vh-56px)] overflow-y-auto bg-slate-200/50 relative">
         {/* SEO LANDING CONTENT - Visible when no data */}
         {!activeResumeData && !isLoading && appState !== AppState.ERROR && (
           <div className="h-full flex flex-col items-center animate-in fade-in zoom-in duration-500 overflow-y-auto">
-            <article className="max-w-3xl w-full text-center space-y-8 p-8 flex-grow">
+            <article className="max-w-3xl w-full text-center space-y-8 pt-4 px-8 pb-8 flex-grow">
               <Logo className="justify-center scale-150 mb-6 mt-12" />
               
               <header className="space-y-4">
