@@ -43,6 +43,38 @@ transporter.verify((error, success) => {
 });
 
 const app = express();
+const cors = require("cors");
+
+// erlaubt Frontend-Origin(s)
+const allowedOrigins = [
+  "https://oneclickcvpro-frontend.onrender.com",
+  "http://localhost:5173",
+  "http://localhost:3000",
+];
+
+// WICHTIG: vor allen routes!
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // erlaubt Requests ohne Origin (z.B. Stripe Webhooks / Postman)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Not allowed by CORS: " + origin));
+    },
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-user-id", "stripe-signature"],
+    credentials: true,
+  })
+);
+
+// Preflight immer beantworten:
+app.options("*", cors());
+
+
 const PORT = process.env.PORT || 4242;
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "1040938691698-o9k428s47iskgq1vs6rk1dnc1857tnir.apps.googleusercontent.com";
@@ -76,18 +108,6 @@ app.use((req, res, next) => {
   // allow bigger resumes (base64 PDFs/images can be large)
   express.json({ limit: "25mb" })(req, res, next);
 });
-
-
-app.use(cors({
-  origin: [
-    "https://oneclickcvpro-frontend.onrender.com",
-    "http://localhost:5173",
-    "https://oneclickcvpro.com",
-    "http://localhost:3000"
-  ],
-  credentials: false, // you are not using cookies/sessions
-}));
-
 
 // --- DATABASE CONNECTION ---
 // You must set MONGODB_URI in your environment variables
