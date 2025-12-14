@@ -43,37 +43,34 @@ transporter.verify((error, success) => {
 });
 
 const app = express();
-const cors = require("cors");
 
 // erlaubt Frontend-Origin(s)
 const allowedOrigins = [
   "https://oneclickcvpro-frontend.onrender.com",
+  "https://oneclickcvpro.com",
   "http://localhost:5173",
   "http://localhost:3000",
 ];
 
-// WICHTIG: vor allen routes!
+// CORS MUSS vor allen routes kommen
 app.use(
   cors({
-    origin: function (origin, callback) {
+    origin: (origin, callback) => {
       // erlaubt Requests ohne Origin (z.B. Stripe Webhooks / Postman)
       if (!origin) return callback(null, true);
 
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
+      if (allowedOrigins.includes(origin)) return callback(null, true);
 
       return callback(new Error("Not allowed by CORS: " + origin));
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "x-user-id", "stripe-signature"],
-    credentials: true,
+    credentials: false, // du nutzt keine Cookies -> false lassen
   })
 );
 
-// Preflight immer beantworten:
+// Preflight immer beantworten
 app.options("*", cors());
-
 
 const PORT = process.env.PORT || 4242;
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
