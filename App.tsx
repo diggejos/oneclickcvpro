@@ -359,13 +359,11 @@ const App: React.FC = () => {
 
   return (
     <>
-      <Navbar
+      <TopNav
         user={user}
-        credits={user?.credits}
-        onNavigate={handleNavigate}
         onAddCredits={() => setShowPricingModal(true)}
-        onLogin={() => setShowAuthModal(true)}
         onLogout={handleLogout}
+        onNavigate={handleNavigate}
       />
       {ContentComponent}
 
