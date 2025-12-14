@@ -234,7 +234,7 @@ export const Editor: React.FC<EditorProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">
+    <div className="min-h-screen pt-14 bg-slate-100 flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">
       <div className="w-full md:w-[400px] flex-shrink-0 h-[40vh] md:h-screen md:sticky md:top-0 z-10 shadow-xl bg-white flex flex-col border-r border-slate-200">
         {/* Header with Title and Save */}
         <div className="p-4 border-b border-slate-200 bg-white flex items-center justify-between gap-2">
