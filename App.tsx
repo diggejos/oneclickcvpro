@@ -46,68 +46,60 @@ const App: React.FC = () => {
   const editorActionsRef = useRef<EditorActions | null>(null);
 
   useEffect(() => {
-  const storedUser = localStorage.getItem(STORAGE_KEY_USER);
-  if (storedUser) {
-    const parsedUser = JSON.parse(storedUser);
-    setUser(parsedUser);
-    fetchResumesFromDB(parsedUser.id);
-  }
-
-  const params = new URLSearchParams(window.location.search);
-
-  // Stripe success redirect
-  if (params.get("success") === "true") {
-    (async () => {
-      try {
+    const storedUser = localStorage.getItem(STORAGE_KEY_USER);
+    if (storedUser) {
+      const parsedUser = JSON.parse(storedUser);
+      setUser(parsedUser);
+      fetchResumesFromDB(parsedUser.id);
+    }
+  
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("success") === "true") {
+      (async () => {
         const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
         if (!current?.id) {
           alert("Payment successful. Please log in again to refresh credits.");
+          window.history.replaceState({}, "", window.location.pathname);
           return;
         }
-
+  
         const before = Number(current.credits || 0);
-
-        // webhook kann ein paar Sekunden brauchen → poll länger + exponential-ish delay
         let latest = before;
-        const maxAttempts = 20; // ~20–30s
-        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+  
+        // Poll max ~10s: warten bis Webhook DB updated hat
+        for (let attempt = 0; attempt < 10; attempt++) {
           try {
             const res = await fetch(`${BACKEND_URL}/api/users/me`, {
               headers: { "x-user-id": current.id },
             });
-
-            const data = await res.json().catch(() => null);
-
-            if (res.ok && typeof data?.credits === "number") {
+            const data = await res.json();
+  
+            if (res.ok && typeof data.credits === "number") {
               latest = data.credits;
-
-              // wichtig: update App-State + localStorage
+  
+              // state + localstorage updaten
               updateUserState({ ...current, credits: latest });
-
-              if (latest > before) break; // success: credits sind wirklich erhöht
+  
+              // stop wenn credits wirklich hoch gingen
+              if (latest > before) break;
             }
           } catch {
-            // ignore transient errors
+            // ignore
           }
-
-          // Wartezeit: 1s, 1s, 1s... (einfach und stabil)
+  
           await new Promise((r) => setTimeout(r, 1000));
         }
-
+  
         alert(
           latest > before
             ? `Payment successful! Credits updated: ${before} → ${latest}`
-            : "Payment successful! Credits will appear in a moment. If not, refresh once."
+            : "Payment successful! Credits will appear shortly. If not, reload once."
         );
-      } finally {
-        // Query-Params aus URL entfernen (wichtig, sonst triggert es wieder)
-        window.history.replaceState({}, "", window.location.pathname);
-      }
-    })();
-  }
-}, []);
-
   
+        window.history.replaceState({}, "", window.location.pathname);
+      })();
+    }
+  }, []);
 
 
   useEffect(() => {
@@ -363,7 +355,9 @@ const App: React.FC = () => {
         user={user}
         onAddCredits={() => setShowPricingModal(true)}
         onLogout={handleLogout}
+        onLogin={() => setShowAuthModal(true)}
         onNavigate={handleNavigate}
+        onBack={view === "editor" && user ? () => setView("dashboard") : undefined}
       />
       {ContentComponent}
 
