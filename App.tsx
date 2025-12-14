@@ -97,7 +97,7 @@ const App: React.FC = () => {
   
       window.history.replaceState({}, "", window.location.pathname);
     })();
-  }
+  };
 
 
 
