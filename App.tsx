@@ -51,36 +51,28 @@ const App: React.FC = () => {
       const parsedUser = JSON.parse(storedUser);
       setUser(parsedUser);
       fetchResumesFromDB(parsedUser.id);
+      // Optional: direkt einmal Credits frisch holen
+      refreshCredits().catch(() => {});
     }
   
     const params = new URLSearchParams(window.location.search);
+  
+    // 1) Nach Stripe success sofort pollen (Webhook braucht manchmal länger)
     if (params.get("success") === "true") {
       (async () => {
         const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
-        if (!current?.id) {
-          alert("Payment successful. Please log in again to refresh credits.");
-          window.history.replaceState({}, "", window.location.pathname);
-          return;
-        }
+        if (!current?.id) return;
   
         const before = Number(current.credits || 0);
         let latest = before;
   
-        // Poll max ~10s: warten bis Webhook DB updated hat
-        for (let attempt = 0; attempt < 10; attempt++) {
+        for (let attempt = 0; attempt < 30; attempt++) { // statt 10 -> 30
           try {
-            const res = await fetch(`${BACKEND_URL}/api/users/me`, {
-              headers: { "x-user-id": current.id },
-            });
-            const data = await res.json();
+            const { credits } = await fetchMe(current.id);
+            latest = credits;
   
-            if (res.ok && typeof data.credits === "number") {
-              latest = data.credits;
-  
-              // state + localstorage updaten
+            if (Number.isFinite(latest)) {
               updateUserState({ ...current, credits: latest });
-  
-              // stop wenn credits wirklich hoch gingen
               if (latest > before) break;
             }
           } catch {
@@ -90,16 +82,26 @@ const App: React.FC = () => {
           await new Promise((r) => setTimeout(r, 1000));
         }
   
-        alert(
-          latest > before
-            ? `Payment successful! Credits updated: ${before} → ${latest}`
-            : "Payment successful! Credits will appear shortly. If not, reload once."
-        );
-  
+        // Query entfernen
         window.history.replaceState({}, "", window.location.pathname);
       })();
     }
+  
+    // 2) Wenn User von Stripe zurückkommt, ist oft "focus" der Moment wo es aktualisiert werden soll
+    const onFocus = () => refreshCredits().catch(() => {});
+    const onVis = () => {
+      if (document.visibilityState === "visible") refreshCredits().catch(() => {});
+    };
+  
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
+  
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, []);
+
 
 
   useEffect(() => {
@@ -158,6 +160,37 @@ const App: React.FC = () => {
     setUser(newUser);
     localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(newUser));
   };
+
+  const fetchMe = async (userId: string) => {
+  const res = await fetch(`${BACKEND_URL}/api/users/me`, {
+    headers: { "x-user-id": userId },
+    cache: "no-store", // wichtig: keine Cache-Leichen
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || "Failed to fetch user");
+
+  // robust: credits können nested oder string sein
+  const creditsRaw =
+    (data?.credits ?? data?.user?.credits ?? data?.data?.credits);
+
+  const credits = Number(creditsRaw);
+
+  return { data, credits };
+};
+
+const refreshCredits = async () => {
+  const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
+  if (!current?.id) return;
+
+  const { credits } = await fetchMe(current.id);
+
+  if (!Number.isFinite(credits)) return;
+
+  // state + localStorage updaten
+  updateUserState({ ...current, credits });
+};
+
 
   const handleLogin = (loggedInUser: User) => {
     updateUserState(loggedInUser);
