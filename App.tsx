@@ -14,6 +14,8 @@ import { unifiedChatAgent } from './services/geminiService';
 import { User, SavedResume, PageView, LegalPageType, ProductType, ChatMessage, ResumeData } from './types';
 import VerifyEmailPage from './components/VerifyEmailPage';
 import VerifiedPage from './components/VerifiedPage';
+import { Navbar } from "./components/Navbar";
+
 
 
 const BACKEND_URL = (import.meta as any).env.VITE_BACKEND_URL || "";
@@ -357,6 +359,14 @@ const App: React.FC = () => {
 
   return (
     <>
+      <Navbar
+        user={user}
+        credits={user?.credits}
+        onNavigate={handleNavigate}
+        onAddCredits={() => setShowPricingModal(true)}
+        onLogin={() => setShowAuthModal(true)}
+        onLogout={handleLogout}
+      />
       {ContentComponent}
 
       <GlobalChatAssistant
