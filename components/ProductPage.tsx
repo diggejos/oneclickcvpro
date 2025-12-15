@@ -99,7 +99,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({ type, onBack, onStart 
             <div className="aspect-video bg-black">
               <video
                 className="w-full h-full object-cover"
-                src="/videos/demo.mp4"
+                src="/video/demo.mp4"
                 controls
                 playsInline
                 preload="metadata"
