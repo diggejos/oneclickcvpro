@@ -66,6 +66,24 @@ export const InputPanel: React.FC<InputPanelProps> = ({
   // Cost is 1 credit for AI generation/tailoring
   const CREDIT_COST = 1;
   const canAfford = (userCredits || 0) >= CREDIT_COST;
+
+  // ✅ NEW: Guards to ensure LOGIN happens before credit modal
+  const requireLoginFirst = () => {
+    if (isGuest) {
+      onRequireAuth();
+      return true;
+    }
+    return false;
+  };
+
+  // ✅ NEW: Guard to ensure PRICING happens before credit modal (if insufficient credits)
+  const requireCreditsFirst = () => {
+    if (!canAfford) {
+      onAddCredits();
+      return true;
+    }
+    return false;
+  };
   
   const handlePremiumAction = async () => {
     if (isGuest) {
@@ -328,7 +346,10 @@ export const InputPanel: React.FC<InputPanelProps> = ({
             {/* Generate / Tailor Button (PREMIUM) */}
             <div className="space-y-2">
               <button
-                onClick={() =>
+                onClick={() => {
+                  if (requireLoginFirst()) return;
+                  if (requireCreditsFirst()) return;
+
                   requestCreditConfirm(
                     hasJobDescription ? "Tailor resume to job" : "Refine / translate resume",
                     1,
@@ -338,8 +359,8 @@ export const InputPanel: React.FC<InputPanelProps> = ({
                       );
                       onGenerateTailored();
                     }
-                  )
-                }
+                  );
+                }}
                 disabled={isProcessing}
                 className={`relative w-full py-3 px-4 rounded-lg flex items-center justify-center gap-2 font-bold text-white shadow-md transition-all overflow-hidden group
                   ${isProcessing 
@@ -431,23 +452,19 @@ export const InputPanel: React.FC<InputPanelProps> = ({
             </label>
 
           <button
-            onClick={() =>
+            onClick={() => {
+              if (requireLoginFirst()) return;
+              if (requireCreditsFirst()) return;
+
               requestCreditConfirm(
                 "Export resume as PDF",
                 1,
                 async () => {
-                  if (isGuest) { onRequireAuth(); return; }
-          
-                  try {
-                    await onSpendCredit("pdf_download");
-                    onPrint(singlePageMode);
-                  } catch (err: any) {
-                    if (err?.status === 402) onAddCredits();
-                    else { alert(err?.message || "PDF credit charge failed."); console.error(err); }
-                  }
+                  await onSpendCredit("pdf_download");
+                  onPrint(singlePageMode);
                 }
-              )
-            }
+              );
+            }}
             className="w-full py-3 px-4 rounded-lg flex items-center justify-center gap-2 font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 hover:text-indigo-600 transition-all"
           >
             <Download size={18} />
