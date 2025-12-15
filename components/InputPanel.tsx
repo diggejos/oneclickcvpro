@@ -403,26 +403,31 @@ export const InputPanel: React.FC<InputPanelProps> = ({
                 <ScrollText size={12} /> Single Page PDF (Continuous)
               </span>
             </label>
-
-            <button
-            onClick={async () => {
-              if (isGuest) { onRequireAuth(); return; }
             
-              try {
-                await onSpendCredit("pdf_download");
-                onPrint(singlePageMode);
-              } catch (err: any) {
-                if (err?.status === 402) onAddCredits();
-                else { alert(err?.message || "PDF credit charge failed."); console.error(err); }
-              }
-            }}
-
-
+            <button
+              onClick={async () => {
+                if (isGuest) { onRequireAuth(); return; }
+            
+                try {
+                  await onSpendCredit("pdf_download");
+                  onPrint(singlePageMode);
+                } catch (err: any) {
+                  if (err?.status === 402) onAddCredits();
+                  else alert("PDF credit charge failed.");
+                }
+              }}
               className="w-full py-3 px-4 rounded-lg flex items-center justify-center gap-2 font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 hover:text-indigo-600 transition-all"
             >
               <Download size={18} />
               Print / Save as PDF
+            
+              {/* ⚡ Credit badge — VISUAL ONLY */}
+              <span className="ml-2 bg-black/20 px-2 py-0.5 rounded text-xs font-mono flex items-center gap-1">
+                <Zap size={10} className="fill-yellow-400 text-yellow-400" />
+                1
+              </span>
             </button>
+            
           </div>
         )}
         
