@@ -1,8 +1,16 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { InputPanel } from './InputPanel';
-import { ResumePreview } from './ResumePreview';
-import { generateTailoredResume, parseBaseResume } from '../services/geminiService';
-import { ResumeData, AppState, ResumeConfig, FileInput, SavedResume, User, PageView } from '../types';
+import React, { useState, useEffect, useRef } from "react";
+import { InputPanel } from "./InputPanel";
+import { ResumePreview } from "./ResumePreview";
+import { generateTailoredResume, parseBaseResume } from "../services/geminiService";
+import {
+  ResumeData,
+  AppState,
+  ResumeConfig,
+  FileInput,
+  SavedResume,
+  User,
+  PageView,
+} from "../types";
 import {
   AlertCircle,
   Layers,
@@ -12,13 +20,15 @@ import {
   CheckCircle2,
   Zap,
   Edit3,
-  RotateCcw,
-  Pencil
-} from 'lucide-react';
-import { EditModal } from './EditModal';
-import { Logo } from './Logo';
-import { Footer } from './Footer';
-import { EditorActions } from '../App';
+  Pencil,
+  Save,
+  Eye,
+  Sliders,
+} from "lucide-react";
+import { EditModal } from "./EditModal";
+import { Logo } from "./Logo";
+import { Footer } from "./Footer";
+import { EditorActions } from "../App";
 
 interface EditorProps {
   initialResume?: SavedResume | null;
@@ -43,43 +53,67 @@ export const Editor: React.FC<EditorProps> = ({
   onAddCredits,
   onNavigate,
   onRegisterActions,
-  onSpendCredit
+  onSpendCredit,
 }) => {
+  // -------------------------
   // Inputs
+  // -------------------------
   const [resumeId] = useState<string>(initialResume?.id || crypto.randomUUID());
-  const [resumeTitle, setResumeTitle] = useState<string>(initialResume?.title || 'Untitled Resume');
-  const [baseResumeInput, setBaseResumeInput] = useState<FileInput>(initialResume?.baseResumeInput || { type: 'text', content: '' });
-  const [jobDescriptionInput, setJobDescriptionInput] = useState<FileInput>(initialResume?.jobDescriptionInput || { type: 'text', content: '' });
+  const [resumeTitle, setResumeTitle] = useState<string>(
+    initialResume?.title || "Untitled Resume"
+  );
+  const [baseResumeInput, setBaseResumeInput] = useState<FileInput>(
+    initialResume?.baseResumeInput || { type: "text", content: "" }
+  );
+  const [jobDescriptionInput, setJobDescriptionInput] = useState<FileInput>(
+    initialResume?.jobDescriptionInput || { type: "text", content: "" }
+  );
 
-  const [appState, setAppState] = useState<AppState>(initialResume?.baseResumeData ? AppState.BASE_READY : AppState.IDLE);
-  const [config, setConfig] = useState<ResumeConfig>(initialResume?.config || {
-    length: 'standard',
-    tone: 'standard',
-    template: 'classic',
-    refinementLevel: 50,
-    showLogos: true,
-    language: 'English'
-  });
-  const [profileImage, setProfileImage] = useState<string | undefined>(initialResume?.profileImage);
+  const [appState, setAppState] = useState<AppState>(
+    initialResume?.baseResumeData ? AppState.BASE_READY : AppState.IDLE
+  );
 
+  const [config, setConfig] = useState<ResumeConfig>(
+    initialResume?.config || {
+      length: "standard",
+      tone: "standard",
+      template: "classic",
+      refinementLevel: 50,
+      showLogos: true,
+      language: "English",
+    }
+  );
+
+  const [profileImage, setProfileImage] = useState<string | undefined>(
+    initialResume?.profileImage
+  );
+
+  // -------------------------
   // Data
-  const [baseResumeData, setBaseResumeData] = useState<ResumeData | null>(initialResume?.baseResumeData || null);
-  const [tailoredResumeData, setTailoredResumeData] = useState<ResumeData | null>(initialResume?.tailoredResumeData || null);
+  // -------------------------
+  const [baseResumeData, setBaseResumeData] = useState<ResumeData | null>(
+    initialResume?.baseResumeData || null
+  );
+  const [tailoredResumeData, setTailoredResumeData] = useState<ResumeData | null>(
+    initialResume?.tailoredResumeData || null
+  );
 
-  const [viewMode, setViewMode] = useState<'base' | 'tailored'>('base');
+  const [viewMode, setViewMode] = useState<"base" | "tailored">("base");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
-  // ✅ NEW: UX
+  // ✅ Mobile UI: tab switch between Inputs and Preview
+  const [mobileTab, setMobileTab] = useState<"inputs" | "preview">("inputs");
+
+  // ✅ Autosave
   const [isDirty, setIsDirty] = useState(false);
-  const [saveToast, setSaveToast] = useState<null | "saving" | "saved" | "error">(null);
-  const snapshotRef = useRef<SavedResume | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const autosaveTimer = useRef<number | null>(null);
 
   // Update view mode if tailored data exists on load
   useEffect(() => {
     if (initialResume?.tailoredResumeData) {
-      setViewMode('tailored');
+      setViewMode("tailored");
       setAppState(AppState.TAILORED_READY);
     }
   }, [initialResume]);
@@ -87,60 +121,16 @@ export const Editor: React.FC<EditorProps> = ({
   // REGISTER ACTIONS FOR GLOBAL CHAT
   useEffect(() => {
     onRegisterActions({
-      getResume: () => viewMode === 'tailored' ? tailoredResumeData : baseResumeData,
+      getResume: () => (viewMode === "tailored" ? tailoredResumeData : baseResumeData),
       updateResume: (newData: ResumeData) => {
-        if (viewMode === 'tailored') {
-          setTailoredResumeData(newData);
-        } else {
-          setBaseResumeData(newData);
-        }
-        setIsDirty(true);
+        if (viewMode === "tailored") setTailoredResumeData(newData);
+        else setBaseResumeData(newData);
       },
-      isTailored: () => viewMode === 'tailored'
+      isTailored: () => viewMode === "tailored",
     });
 
     return () => onRegisterActions(null);
   }, [baseResumeData, tailoredResumeData, viewMode, onRegisterActions]);
-
-  const buildSnapshot = (): SavedResume => ({
-    id: resumeId,
-    title: resumeTitle,
-    lastModified: Date.now(),
-    baseResumeInput,
-    jobDescriptionInput,
-    baseResumeData,
-    tailoredResumeData,
-    config,
-    profileImage
-  });
-
-  // ✅ NEW: keep latest snapshot for autosave
-  useEffect(() => {
-    snapshotRef.current = buildSnapshot();
-  }, [
-    resumeTitle,
-    baseResumeInput,
-    jobDescriptionInput,
-    baseResumeData,
-    tailoredResumeData,
-    config,
-    profileImage
-  ]);
-
-  // ✅ NEW: autosave on leaving editor (logged-in only)
-  useEffect(() => {
-    return () => {
-      if (isGuest) return;
-      if (!isDirty) return;
-      if (!snapshotRef.current) return;
-
-      try {
-        onSave(snapshotRef.current);
-      } catch {
-        // best effort
-      }
-    };
-  }, [isDirty, isGuest, onSave]);
 
   const handleImageUpload = (file: File) => {
     const reader = new FileReader();
@@ -158,16 +148,20 @@ export const Editor: React.FC<EditorProps> = ({
     setAppState(AppState.GENERATING_BASE);
     setErrorMsg(null);
     setTailoredResumeData(null);
-    setViewMode('base');
+    setViewMode("base");
 
     try {
       const data = await parseBaseResume(baseResumeInput);
       setBaseResumeData(data);
       setAppState(AppState.BASE_READY);
       setIsDirty(true);
-      if (resumeTitle === 'Untitled Resume') {
+
+      if (resumeTitle === "Untitled Resume") {
         setResumeTitle(`${data.fullName}'s Resume`);
       }
+
+      // on mobile, after base is ready, jump to preview automatically (nice UX)
+      setMobileTab("preview");
     } catch (err: any) {
       console.error(err);
       setAppState(AppState.ERROR);
@@ -186,8 +180,11 @@ export const Editor: React.FC<EditorProps> = ({
       const data = await generateTailoredResume(sourceData, jobDescriptionInput, config);
       setTailoredResumeData(data);
       setAppState(AppState.TAILORED_READY);
-      setViewMode('tailored');
+      setViewMode("tailored");
       setIsDirty(true);
+
+      // on mobile, go to preview after tailoring
+      setMobileTab("preview");
     } catch (err: any) {
       console.error(err);
       setAppState(AppState.ERROR);
@@ -200,26 +197,27 @@ export const Editor: React.FC<EditorProps> = ({
       setBaseResumeData(null);
       setTailoredResumeData(null);
       setAppState(AppState.IDLE);
-      setViewMode('base');
+      setViewMode("base");
       setIsDirty(true);
+      setMobileTab("inputs");
     }
   };
 
   const handlePrint = (singlePage: boolean = false) => {
-    const content = document.getElementById('resume-preview-content');
+    const content = document.getElementById("resume-preview-content");
     if (!content) {
       alert("Resume content not found.");
       return;
     }
+
     const heightPx = content.scrollHeight;
     const heightMm = Math.ceil(heightPx * 0.264583) + 30;
-    const printWindow = window.open('', '_blank', 'width=900,height=1100');
+    const printWindow = window.open("", "_blank", "width=900,height=1100");
     if (!printWindow) return;
 
-    const pageCss =
-      singlePage
-        ? `@page { size: 210mm ${heightMm}mm; margin: 0; } body { margin: 0; } .resume-preview-container { padding: 15mm !important; box-shadow: none !important; }`
-        : `@page { margin: 0.5cm; size: auto; }`;
+    const pageCss = singlePage
+      ? `@page { size: 210mm ${heightMm}mm; margin: 0; } body { margin: 0; } .resume-preview-container { padding: 15mm !important; box-shadow: none !important; }`
+      : `@page { margin: 0.5cm; size: auto; }`;
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -249,10 +247,16 @@ export const Editor: React.FC<EditorProps> = ({
     printWindow.document.close();
   };
 
-  const activeDataRaw = (viewMode === 'tailored' && tailoredResumeData) ? tailoredResumeData : baseResumeData;
-  const activeResumeData = activeDataRaw ? { ...activeDataRaw, profileImage: profileImage || activeDataRaw.profileImage } : null;
-  const isTailoredView = viewMode === 'tailored' && !!tailoredResumeData;
-  const isLoading = appState === AppState.GENERATING_BASE || appState === AppState.GENERATING_TAILORED;
+  const activeDataRaw =
+    viewMode === "tailored" && tailoredResumeData ? tailoredResumeData : baseResumeData;
+
+  const activeResumeData = activeDataRaw
+    ? { ...activeDataRaw, profileImage: profileImage || activeDataRaw.profileImage }
+    : null;
+
+  const isTailoredView = viewMode === "tailored" && !!tailoredResumeData;
+  const isLoading =
+    appState === AppState.GENERATING_BASE || appState === AppState.GENERATING_TAILORED;
 
   const handleManualSave = (newData: ResumeData) => {
     if (isTailoredView) setTailoredResumeData(newData);
@@ -260,36 +264,75 @@ export const Editor: React.FC<EditorProps> = ({
     setIsDirty(true);
   };
 
-  // ✅ NEW: save with toast
-  const triggerSave = async () => {
-    try {
-      setSaveToast("saving");
-      const resumeToSave = buildSnapshot();
-      snapshotRef.current = resumeToSave;
+  const buildResumePayload = (): SavedResume => ({
+    id: resumeId,
+    title: resumeTitle,
+    lastModified: Date.now(),
+    baseResumeInput,
+    jobDescriptionInput,
+    baseResumeData,
+    tailoredResumeData,
+    config,
+    profileImage,
+  });
 
-      if (isGuest) {
-        onSave(resumeToSave);
-        setSaveToast("saved");
-        setTimeout(() => setSaveToast(null), 1500);
-        onRequireAuth();
-        return;
-      }
+  const triggerSave = () => {
+    const resumeToSave = buildResumePayload();
 
+    if (isGuest) {
       onSave(resumeToSave);
-      setIsDirty(false);
-
-      setSaveToast("saved");
-      setTimeout(() => setSaveToast(null), 1500);
-    } catch (e) {
-      console.error(e);
-      setSaveToast("error");
-      setTimeout(() => setSaveToast(null), 2500);
+      onRequireAuth();
+      return;
     }
+
+    onSave(resumeToSave);
+    setIsDirty(false);
+    setLastSavedAt(Date.now());
   };
+
+  // ✅ Autosave: logged-in only
+  useEffect(() => {
+    if (isGuest) return;
+    if (!currentUser) return;
+
+    // mark dirty on any meaningful changes
+    setIsDirty(true);
+
+    if (autosaveTimer.current) window.clearTimeout(autosaveTimer.current);
+
+    autosaveTimer.current = window.setTimeout(() => {
+      try {
+        const resumeToSave = buildResumePayload();
+        onSave(resumeToSave);
+        setIsDirty(false);
+        setLastSavedAt(Date.now());
+      } catch (e) {
+        console.warn("Autosave failed", e);
+      }
+    }, 1200);
+
+    return () => {
+      if (autosaveTimer.current) window.clearTimeout(autosaveTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    // anything that should autosave
+    resumeTitle,
+    baseResumeInput,
+    jobDescriptionInput,
+    baseResumeData,
+    tailoredResumeData,
+    config,
+    profileImage,
+  ]);
 
   const handleBack = () => {
     if (isGuest) {
-      if (window.confirm("You are in Guest Mode. If you leave now, your unsaved changes will be lost. Do you want to Log In to save first?")) {
+      if (
+        window.confirm(
+          "You are in Guest Mode. If you leave now, your unsaved changes will be lost. Do you want to Log In to save first?"
+        )
+      ) {
         onRequireAuth();
       } else {
         window.location.reload();
@@ -301,29 +344,68 @@ export const Editor: React.FC<EditorProps> = ({
 
   return (
     <div className="min-h-[calc(100vh-56px)] bg-slate-100 flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">
-      <div className="w-full md:w-[400px] flex-shrink-0 h-[40vh] md:h-[calc(100vh-56px)] md:sticky md:top-[56px] z-10 bg-white flex flex-col border-r border-slate-200">
-
-        {/* Panel Header (NOT a second navbar) */}
-        <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-2">
+      {/* ✅ MOBILE TOP SWITCHER (only on mobile) */}
+      <div className="md:hidden sticky top-[56px] z-20 bg-white border-b border-slate-200">
+        <div className="px-3 py-2 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <Logo iconOnly className="w-7 h-7 flex-shrink-0" />
+            <span className="text-xs font-bold text-slate-700 truncate">
+              {resumeTitle || "Untitled Resume"}
+            </span>
+          </div>
 
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => setMobileTab("inputs")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1 ${
+                mobileTab === "inputs"
+                  ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                  : "bg-white text-slate-600 border-slate-200"
+              }`}
+            >
+              <Sliders size={14} /> Inputs
+            </button>
+            <button
+              onClick={() => setMobileTab("preview")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1 ${
+                mobileTab === "preview"
+                  ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                  : "bg-white text-slate-600 border-slate-200"
+              }`}
+            >
+              <Eye size={14} /> Preview
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* LEFT PANEL */}
+      <div
+        className={[
+          "w-full md:w-[400px] flex-shrink-0 bg-white flex flex-col border-r border-slate-200",
+          // Desktop heights
+          "md:h-[calc(100vh-56px)] md:sticky md:top-[56px] md:z-10",
+          // Mobile: full height under topnav + mobile switcher
+          "h-[calc(100vh-56px-48px)]",
+          // Mobile: hide/show via tab
+          mobileTab === "preview" ? "md:flex hidden" : "flex",
+        ].join(" ")}
+      >
+        {/* Panel Header (desktop only; mobile uses the switcher) */}
+        <div className="hidden md:flex px-4 py-3 border-b border-slate-200 bg-slate-50 items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Logo iconOnly className="w-7 h-7 flex-shrink-0" />
             <div className="flex items-center gap-2 min-w-0 w-full">
+              <Pencil size={14} className="text-slate-400 flex-shrink-0" />
               <input
                 value={resumeTitle}
-                onChange={(e) => {
-                  setResumeTitle(e.target.value);
-                  setIsDirty(true);
+                onChange={(e) => setResumeTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                 }}
                 className="text-sm font-semibold text-slate-800 bg-transparent border-none focus:ring-0 w-full min-w-0 truncate"
                 placeholder="Untitled Resume"
               />
-
-              {/* ✅ rename icon + unsaved dot */}
-              <Pencil size={14} className="text-slate-400 flex-shrink-0" title="Rename" />
-              {isDirty && (
-                <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" title="Unsaved changes" />
-              )}
             </div>
           </div>
 
@@ -338,20 +420,45 @@ export const Editor: React.FC<EditorProps> = ({
             ) : (
               <button
                 onClick={triggerSave}
-                className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded border border-indigo-200"
+                className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded border border-indigo-200 flex items-center gap-2"
+                title="Save now"
               >
-                Save
+                <Save size={14} />
+                {isDirty ? "Save" : "Saved"}
               </button>
             )}
           </div>
         </div>
 
+        {/* Desktop mini save status */}
+        <div className="hidden md:block px-4 py-2 border-b border-slate-200 text-[11px] text-slate-500">
+          {isGuest ? (
+            <span>Guest mode: log in to save resumes.</span>
+          ) : (
+            <span>
+              {isDirty ? (
+                "Unsaved changes… autosaving"
+              ) : lastSavedAt ? (
+                `Saved ${new Date(lastSavedAt).toLocaleTimeString()}`
+              ) : (
+                "Saved"
+              )}
+            </span>
+          )}
+        </div>
+
         <div className="flex-grow overflow-y-auto">
           <InputPanel
             baseResumeInput={baseResumeInput}
-            setBaseResumeInput={(v) => { setBaseResumeInput(v); setIsDirty(true); }}
+            setBaseResumeInput={(v) => {
+              setBaseResumeInput(v);
+              setIsDirty(true);
+            }}
             jobDescriptionInput={jobDescriptionInput}
-            setJobDescriptionInput={(v) => { setJobDescriptionInput(v); setIsDirty(true); }}
+            setJobDescriptionInput={(v) => {
+              setJobDescriptionInput(v);
+              setIsDirty(true);
+            }}
             onGenerateBase={handleGenerateBase}
             onGenerateTailored={handleGenerateTailored}
             onPrint={handlePrint}
@@ -359,10 +466,7 @@ export const Editor: React.FC<EditorProps> = ({
             resetBase={handleResetBase}
             config={config}
             setConfig={(updater) => {
-              setConfig((prev) => {
-                const next = typeof updater === "function" ? (updater as any)(prev) : updater;
-                return next;
-              });
+              setConfig(updater);
               setIsDirty(true);
             }}
             onImageUpload={handleImageUpload}
@@ -376,50 +480,66 @@ export const Editor: React.FC<EditorProps> = ({
         </div>
       </div>
 
-      {/* right-side preview unchanged */}
-      <div className="flex-grow h-[60vh] md:h-[calc(100vh-56px)] overflow-y-auto bg-slate-200/50 relative">
+      {/* RIGHT PREVIEW */}
+      <div
+        className={[
+          "flex-grow overflow-y-auto bg-slate-200/50 relative",
+          "h-[calc(100vh-56px-48px)] md:h-[calc(100vh-56px)]",
+          mobileTab === "inputs" ? "md:block hidden" : "block",
+        ].join(" ")}
+      >
+        {/* SEO LANDING CONTENT - Visible when no data */}
         {!activeResumeData && !isLoading && appState !== AppState.ERROR && (
           <div className="h-full flex flex-col items-center animate-in fade-in zoom-in duration-500 overflow-y-auto">
-            <article className="max-w-3xl w-full text-center space-y-8 pt-4 px-8 pb-8 flex-grow">
-              <Logo className="justify-center scale-150 mb-6 mt-12" />
+            <article className="max-w-3xl w-full text-center space-y-8 pt-4 px-6 pb-8 flex-grow">
+              <Logo className="justify-center scale-150 mb-6 mt-10" />
+
               <header className="space-y-4">
                 <h1 className="text-3xl md:text-5xl font-extrabold text-slate-800 tracking-tight leading-tight">
                   OneClick<span className="text-indigo-600">CV</span>Pro <br />
-                  <span className="text-xl md:text-2xl font-medium text-slate-500 block mt-2">The AI Resume Architect</span>
+                  <span className="text-xl md:text-2xl font-medium text-slate-500 block mt-2">
+                    The AI Resume Architect
+                  </span>
                 </h1>
                 <p className="text-lg text-slate-600 max-w-xl mx-auto leading-relaxed">
-                  Transform your <strong className="text-slate-900">LinkedIn Profile</strong> into a perfect, ATS-ready resume in seconds.
-                  Customize it for any job application with a single click.
+                  Transform your <strong className="text-slate-900">LinkedIn Profile</strong>{" "}
+                  into a perfect, ATS-ready resume in seconds. Customize it for any job
+                  application with a single click.
                 </p>
               </header>
 
+              {/* Feature Grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left mt-8">
                 <section className="bg-white p-5 rounded-xl shadow-sm border border-slate-100">
                   <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center mb-3">
                     <Linkedin size={20} />
                   </div>
                   <h2 className="font-bold text-slate-800 mb-1">LinkedIn Import</h2>
-                  <p className="text-xs text-slate-500 leading-relaxed">Save profile as PDF or copy text. We parse it instantly into structured data.</p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Save profile as PDF or copy text. We parse it instantly into structured data.
+                  </p>
                 </section>
-
                 <section className="bg-white p-5 rounded-xl shadow-sm border border-slate-100">
                   <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-lg flex items-center justify-center mb-3">
                     <Wand2 size={20} />
                   </div>
                   <h2 className="font-bold text-slate-800 mb-1">AI Tailoring</h2>
-                  <p className="text-xs text-slate-500 leading-relaxed">Paste a job description. We rewrite your resume to match keywords and pass ATS.</p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Paste a job description. We rewrite your resume to match keywords and pass ATS.
+                  </p>
                 </section>
-
                 <section className="bg-white p-5 rounded-xl shadow-sm border border-slate-100">
                   <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center mb-3">
                     <CheckCircle2 size={20} />
                   </div>
                   <h2 className="font-bold text-slate-800 mb-1">ATS Optimized</h2>
-                  <p className="text-xs text-slate-500 leading-relaxed">Clean, professional templates designed to be readable by hiring systems.</p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Clean, professional templates designed to be readable by hiring systems.
+                  </p>
                 </section>
               </div>
 
-              <div className="pt-8 mb-12">
+              <div className="pt-6 mb-10">
                 <p className="text-sm font-bold text-indigo-600 flex items-center justify-center gap-2 animate-pulse">
                   <Zap size={16} /> Start on the left panel to begin
                 </p>
@@ -440,31 +560,56 @@ export const Editor: React.FC<EditorProps> = ({
         )}
 
         {appState === AppState.ERROR && (
-          <div className="w-full max-w-lg mx-auto mt-20 p-6 bg-red-50 border border-red-200 rounded-xl flex items-start gap-4 mx-8">
+          <div className="w-full max-w-lg mx-auto mt-20 p-6 bg-red-50 border border-red-200 rounded-xl flex items-start gap-4 mx-6">
             <AlertCircle className="text-red-600 mt-1" />
-            <div><h3 className="font-bold text-red-800">Error</h3><p className="text-red-600 text-sm">{errorMsg}</p></div>
+            <div>
+              <h3 className="font-bold text-red-800">Error</h3>
+              <p className="text-red-600 text-sm">{errorMsg}</p>
+            </div>
           </div>
         )}
 
         {activeResumeData && (
-          <div className={`p-4 md:p-8 ${isLoading ? 'opacity-30 blur-[1px]' : 'opacity-100'}`}>
+          <div className={`p-4 md:p-8 ${isLoading ? "opacity-30 blur-[1px]" : "opacity-100"}`}>
             <div className="mb-4 flex items-center justify-between text-sm font-medium text-slate-500">
               <div className="bg-slate-200 p-1 rounded-lg flex text-xs font-bold shadow-inner">
-                <button onClick={() => setViewMode('base')} className={`px-4 py-1.5 rounded-md transition-all flex items-center gap-2 ${viewMode === 'base' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                <button
+                  onClick={() => setViewMode("base")}
+                  className={`px-4 py-1.5 rounded-md transition-all flex items-center gap-2 ${
+                    viewMode === "base"
+                      ? "bg-white text-indigo-600 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
                   <Layers size={12} /> Base
                 </button>
-                <button onClick={() => setViewMode('tailored')} disabled={!tailoredResumeData} className={`px-4 py-1.5 rounded-md transition-all flex items-center gap-2 ${viewMode === 'tailored' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'} ${!tailoredResumeData ? 'opacity-50 cursor-not-allowed' : 'hover:text-slate-700'}`}>
+                <button
+                  onClick={() => setViewMode("tailored")}
+                  disabled={!tailoredResumeData}
+                  className={`px-4 py-1.5 rounded-md transition-all flex items-center gap-2 ${
+                    viewMode === "tailored" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500"
+                  } ${!tailoredResumeData ? "opacity-50 cursor-not-allowed" : "hover:text-slate-700"}`}
+                >
                   <Layers size={12} /> Tailored
                 </button>
               </div>
 
-              {/* ✅ Manual edit still here */}
-              <button onClick={() => setIsEditModalOpen(true)} className="bg-white border border-slate-300 text-slate-600 hover:text-indigo-600 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm">
+              {/* ✅ Manual Edit preserved */}
+              <button
+                onClick={() => setIsEditModalOpen(true)}
+                className="bg-white border border-slate-300 text-slate-600 hover:text-indigo-600 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm"
+              >
                 <Edit3 size={14} /> Manual Edit
               </button>
             </div>
 
-            <ResumePreview data={activeResumeData} baseData={baseResumeData} isTailored={isTailoredView} template={config.template} showLogos={config.showLogos} />
+            <ResumePreview
+              data={activeResumeData}
+              baseData={baseResumeData}
+              isTailored={isTailoredView}
+              template={config.template}
+              showLogos={config.showLogos}
+            />
           </div>
         )}
       </div>
@@ -475,20 +620,6 @@ export const Editor: React.FC<EditorProps> = ({
           onSave={handleManualSave}
           onClose={() => setIsEditModalOpen(false)}
         />
-      )}
-
-      {/* ✅ NEW: save toast */}
-      {saveToast && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[9999]">
-          <div className="px-4 py-2 rounded-lg shadow-lg text-sm font-semibold bg-white border border-slate-200 flex items-center gap-2">
-            {saveToast === "saving" && <RotateCcw className="animate-spin" size={16} />}
-            {saveToast === "saved" && <CheckCircle2 size={16} className="text-green-600" />}
-            {saveToast === "error" && <AlertCircle size={16} className="text-red-600" />}
-            <span>
-              {saveToast === "saving" ? "Saving…" : saveToast === "saved" ? "Saved" : "Save failed"}
-            </span>
-          </div>
-        </div>
       )}
     </div>
   );
