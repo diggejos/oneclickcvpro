@@ -2,6 +2,8 @@ import React, { useRef, useState } from 'react';
 import { FileText, Wand2, RotateCcw, Download, CheckCircle2, Edit2, Layout, Sliders, ImageIcon, RefreshCw, Zap, Building2, Languages, ScrollText, Lock, UploadCloud } from 'lucide-react';
 import { AppState, ResumeConfig, TemplateId, ResumeLength, ResumeTone, FileInput, ResumeLanguage } from '../types';
 import { FileDropZone } from './FileDropZone';
+import { CreditConfirmModal } from "./CreditConfirmModal";
+
 
 interface InputPanelProps {
   baseResumeInput: FileInput;
@@ -53,6 +55,10 @@ export const InputPanel: React.FC<InputPanelProps> = ({
   const isGeneratingBase = appState === AppState.GENERATING_BASE;
   const isProcessing = appState === AppState.GENERATING_BASE || appState === AppState.GENERATING_TAILORED;
   const isTailored = appState === AppState.TAILORED_READY;
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<null | (() => Promise<void>)>(null);
+  const [confirmLabel, setConfirmLabel] = useState("");
+  const [confirmCost, setConfirmCost] = useState(1);
 
   const hasJobDescription = jobDescriptionInput.content.length > 0;
 
@@ -80,7 +86,16 @@ export const InputPanel: React.FC<InputPanelProps> = ({
     }
   };
 
-
+  const requestCreditConfirm = (
+      label: string,
+      cost: number,
+      action: () => Promise<void>
+    ) => {
+      setConfirmLabel(label);
+      setConfirmCost(cost);
+      setConfirmAction(() => action);
+      setConfirmOpen(true);
+    };
 
   const handleImageClick = () => {
     fileInputRef.current?.click();
@@ -313,7 +328,18 @@ export const InputPanel: React.FC<InputPanelProps> = ({
             {/* Generate / Tailor Button (PREMIUM) */}
             <div className="space-y-2">
               <button
-                onClick={handlePremiumAction}
+                onClick={() =>
+                  requestCreditConfirm(
+                    hasJobDescription ? "Tailor resume to job" : "Refine / translate resume",
+                    1,
+                    async () => {
+                      await onSpendCredit(
+                        hasJobDescription ? "ai_tailor" : "ai_refine_translate"
+                      );
+                      onGenerateTailored();
+                    }
+                  )
+                }
                 disabled={isProcessing}
                 className={`relative w-full py-3 px-4 rounded-lg flex items-center justify-center gap-2 font-bold text-white shadow-md transition-all overflow-hidden group
                   ${isProcessing 
@@ -403,31 +429,37 @@ export const InputPanel: React.FC<InputPanelProps> = ({
                 <ScrollText size={12} /> Single Page PDF (Continuous)
               </span>
             </label>
-            
-            <button
-              onClick={async () => {
-                if (isGuest) { onRequireAuth(); return; }
-            
-                try {
-                  await onSpendCredit("pdf_download");
-                  onPrint(singlePageMode);
-                } catch (err: any) {
-                  if (err?.status === 402) onAddCredits();
-                  else alert("PDF credit charge failed.");
+            // STEP 2 — here is the FULL PDF button block to paste (replaces your current PDF button)
+
+          <button
+            onClick={() =>
+              requestCreditConfirm(
+                "Export resume as PDF",
+                1,
+                async () => {
+                  if (isGuest) { onRequireAuth(); return; }
+          
+                  try {
+                    await onSpendCredit("pdf_download");
+                    onPrint(singlePageMode);
+                  } catch (err: any) {
+                    if (err?.status === 402) onAddCredits();
+                    else { alert(err?.message || "PDF credit charge failed."); console.error(err); }
+                  }
                 }
-              }}
-              className="w-full py-3 px-4 rounded-lg flex items-center justify-center gap-2 font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 hover:text-indigo-600 transition-all"
-            >
-              <Download size={18} />
-              Print / Save as PDF
-            
-              {/* ⚡ Credit badge — VISUAL ONLY */}
-              <span className="ml-2 bg-black/20 px-2 py-0.5 rounded text-xs font-mono flex items-center gap-1">
-                <Zap size={10} className="fill-yellow-400 text-yellow-400" />
-                1
-              </span>
-            </button>
-            
+              )
+            }
+            className="w-full py-3 px-4 rounded-lg flex items-center justify-center gap-2 font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 hover:text-indigo-600 transition-all"
+          >
+            <Download size={18} />
+            Print / Save as PDF
+          
+            <span className="ml-2 bg-black/20 px-2 py-0.5 rounded text-xs font-mono flex items-center gap-1">
+              <Zap size={10} className="fill-yellow-400 text-yellow-400" />
+              1
+            </span>
+          </button>
+
           </div>
         )}
         
@@ -435,6 +467,18 @@ export const InputPanel: React.FC<InputPanelProps> = ({
           Powered by Gemini 2.5 Flash
         </p>
       </div>
+
+      <CreditConfirmModal
+      open={confirmOpen}
+      credits={userCredits || 0}
+      cost={confirmCost}
+      actionLabel={confirmLabel}
+      onCancel={() => setConfirmOpen(false)}
+      onConfirm={async () => {
+        setConfirmOpen(false);
+        if (confirmAction) await confirmAction();
+      }}
+    />
     </div>
   );
 };
