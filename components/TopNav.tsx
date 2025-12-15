@@ -11,7 +11,7 @@ type Props = {
 
   view?: PageView;
   onNavigate?: (page: PageView, subPage?: any) => void;
-  onBack?: () => void; // optional: back button in navbar
+  onBack?: () => void;
 };
 
 export const TopNav: React.FC<Props> = ({
@@ -24,9 +24,9 @@ export const TopNav: React.FC<Props> = ({
 }) => {
   return (
     <nav className="bg-white border-b border-slate-200 sticky top-0 z-50">
-      {/* Full width: kein max-w Container */}
-      <div className="w-full flex items-center justify-between px-6 py-3">
-        <div className="flex items-center gap-3">
+      <div className="w-full flex items-center justify-between px-3 sm:px-6 py-2 sm:py-3">
+        {/* LEFT */}
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           {onBack && (
             <button
               onClick={onBack}
@@ -38,27 +38,51 @@ export const TopNav: React.FC<Props> = ({
           )}
 
           <button
-            className="flex items-center"
+            className="flex items-center min-w-0"
             onClick={() => onNavigate?.(user ? "dashboard" : "editor")}
             title="Home"
           >
-            <Logo />
+            {/* icon-only on mobile, full logo on desktop */}
+            <span className="sm:hidden">
+              <Logo iconOnly className="w-7 h-7" />
+            </span>
+            <span className="hidden sm:block">
+              <Logo />
+            </span>
           </button>
         </div>
 
-        <div className="flex items-center gap-4">
+        {/* RIGHT */}
+        <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
           {user ? (
             <>
+              {/* Credits (compact on mobile) */}
               <button
                 onClick={onAddCredits}
-                className="flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-full transition-colors border border-indigo-200 group"
+                className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 sm:px-3 py-1.5 rounded-full transition-colors border border-indigo-200 group"
+                title="Add credits"
               >
-                <Zap size={14} className="fill-indigo-500 group-hover:scale-110 transition-transform" />
-                <span className="text-sm font-bold">{user.credits} Credits</span>
-                <Plus size={12} className="ml-1" />
+                <Zap
+                  size={14}
+                  className="fill-indigo-500 group-hover:scale-110 transition-transform"
+                />
+
+                {/* always show number */}
+                <span className="text-xs sm:text-sm font-bold tabular-nums">
+                  {user.credits}
+                </span>
+
+                {/* only show label on >= sm */}
+                <span className="hidden sm:inline text-sm font-bold">Credits</span>
+
+                {/* plus icon only really needed on desktop */}
+                <span className="hidden sm:inline">
+                  <Plus size={12} className="ml-1" />
+                </span>
               </button>
 
-              <div className="flex items-center gap-3 border-l border-slate-200 pl-4">
+              {/* Avatar + details (details hidden on mobile) */}
+              <div className="flex items-center gap-2 sm:gap-3 border-l border-slate-200 pl-2 sm:pl-4">
                 <img
                   src={user.avatar}
                   alt={user.name}
@@ -70,6 +94,7 @@ export const TopNav: React.FC<Props> = ({
                 </div>
               </div>
 
+              {/* Logout */}
               <button
                 onClick={onLogout}
                 className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
@@ -81,9 +106,10 @@ export const TopNav: React.FC<Props> = ({
           ) : (
             <button
               onClick={onLogin}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold text-sm"
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 sm:px-4 py-2 rounded-lg font-bold text-sm"
             >
-              <LogIn size={16} /> Login
+              <LogIn size={16} /> <span className="hidden sm:inline">Login</span>
+              <span className="sm:hidden">Login</span>
             </button>
           )}
         </div>
