@@ -345,7 +345,7 @@ export const Editor: React.FC<EditorProps> = ({
   return (
     <div className="min-h-[calc(100vh-56px)] bg-slate-100 flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">
       {/* ✅ MOBILE TOP SWITCHER (only on mobile) */}
-      <div className="md:hidden sticky top-[56px] z-20 bg-white border-b border-slate-200">
+      <div className="md:hidden z-20 bg-white border-b border-slate-200">
         <div className="px-3 py-2 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <Logo iconOnly className="w-7 h-7 flex-shrink-0" />
@@ -386,7 +386,8 @@ export const Editor: React.FC<EditorProps> = ({
           // Desktop heights
           "md:h-[calc(100vh-56px)] md:sticky md:top-[56px] md:z-10",
           // Mobile: full height under topnav + mobile switcher
-          "h-[calc(100vh-56px-48px)]",
+          //"h-[calc(100vh-56px-48px)]",
+          "h-auto"
           // Mobile: hide/show via tab
           mobileTab === "preview" ? "md:flex hidden" : "flex",
         ].join(" ")}
