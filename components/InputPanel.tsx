@@ -429,7 +429,6 @@ export const InputPanel: React.FC<InputPanelProps> = ({
                 <ScrollText size={12} /> Single Page PDF (Continuous)
               </span>
             </label>
-            // STEP 2 — here is the FULL PDF button block to paste (replaces your current PDF button)
 
           <button
             onClick={() =>
