@@ -47,6 +47,8 @@ export const ProductPage: React.FC<ProductPageProps> = ({ type, onBack, onStart 
     }
   };
 
+  
+
   const data = content[type];
 
   return (
@@ -92,6 +94,28 @@ export const ProductPage: React.FC<ProductPageProps> = ({ type, onBack, onStart 
             </div>
           ))}
         </div>
+          {/* Demo video */}
+          <div className="mt-6 bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+            <div className="aspect-video bg-black">
+              <video
+                className="w-full h-full object-cover"
+                src="/videos/demo.mp4"
+                controls
+                playsInline
+                preload="metadata"
+                poster="/images/demo-poster.jpg"
+              />
+            </div>
+          
+            <div className="p-4">
+              <p className="text-sm font-semibold text-slate-900">
+                Watch how it works in 30 seconds
+              </p>
+              <p className="text-xs text-slate-500 mt-1">
+                Import → tailor → export PDF.
+              </p>
+            </div>
+          </div>
 
         {/* Call to Action */}
         <div className="mt-20 text-center">
