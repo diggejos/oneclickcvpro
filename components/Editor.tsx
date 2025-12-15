@@ -383,12 +383,8 @@ export const Editor: React.FC<EditorProps> = ({
       <div
         className={[
           "w-full md:w-[400px] flex-shrink-0 bg-white flex flex-col border-r border-slate-200",
-          // Desktop heights
           "md:h-[calc(100vh-56px)] md:sticky md:top-[56px] md:z-10",
-          // Mobile: full height under topnav + mobile switcher
-          //"h-[calc(100vh-56px-48px)]",
-          "h-auto"
-          // Mobile: hide/show via tab
+          "max-h-[calc(100vh-56px)]",
           mobileTab === "preview" ? "md:flex hidden" : "flex",
         ].join(" ")}
       >
@@ -485,7 +481,7 @@ export const Editor: React.FC<EditorProps> = ({
       <div
         className={[
           "flex-grow overflow-y-auto bg-slate-200/50 relative",
-          "h-[calc(100vh-56px-48px)] md:h-[calc(100vh-56px)]",
+          "md:h-[calc(100vh-56px)]",
           mobileTab === "inputs" ? "md:block hidden" : "block",
         ].join(" ")}
       >
