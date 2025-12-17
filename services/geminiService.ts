@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type, Schema, Part } from "@google/genai";
 import { ResumeData, ResumeConfig, FileInput } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
 
 const RESUME_SCHEMA: Schema = {
   type: Type.OBJECT,
