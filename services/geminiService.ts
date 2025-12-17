@@ -1,6 +1,31 @@
 import { GoogleGenAI, Type, Schema, Part } from "@google/genai";
 import { ResumeData, ResumeConfig, FileInput } from "../types";
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function isOverloaded503(err: any) {
+  const code = err?.error?.code ?? err?.status ?? err?.code;
+  const msg = String(err?.error?.message || err?.message || "");
+  return code === 503 || /overloaded|unavailable|503/i.test(msg);
+}
+
+async function withRetry<T>(fn: () => Promise<T>, retries = 4) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const last = attempt === retries;
+      if (!isOverloaded503(err) || last) throw err;
+
+      const base = Math.min(8000, 500 * Math.pow(2, attempt)); // 0.5s,1s,2s,4s,8s
+      const jitter = Math.floor(Math.random() * 250);
+      await sleep(base + jitter);
+    }
+  }
+  throw new Error("AI_RETRY_FAILED");
+}
+
+
 const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
 
 const RESUME_SCHEMA: Schema = {
