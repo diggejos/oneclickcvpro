@@ -181,6 +181,8 @@ const App: React.FC = () => {
                 // If credits increased, update and stop polling
                 if (latest > before) {
                    updateCreditsInState(latest);
+                   // ✅ Notify user immediately about the success
+                   alert("Payment Successful! Your credits have been updated.");
                    break;
                 }
               }
