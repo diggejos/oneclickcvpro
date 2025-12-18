@@ -5,9 +5,7 @@ import { Logo } from "./Logo";
 
 type Props = {
   user: User | null;
-  // ✅ NEW: Explicit credits prop ensures updates trigger immediately
-  credits?: number; 
-  
+  credits?: number; // ✅ Receive explicit credits
   onAddCredits: () => void;
   onLogout: () => void;
   onLogin: () => void;
@@ -19,15 +17,15 @@ type Props = {
 
 export const TopNav: React.FC<Props> = ({
   user,
-  credits, // Receive the explicit prop
+  credits,
   onAddCredits,
   onLogout,
   onLogin,
   onNavigate,
   onBack,
 }) => {
-  // Use explicit credits if available, otherwise fall back to user object
-  const displayCredits = credits !== undefined ? credits : user?.credits;
+  // ✅ Prioritize explicit prop
+  const displayCredits = typeof credits === 'number' ? credits : user?.credits;
 
   return (
     <nav className="bg-white border-b border-slate-200 sticky top-0 z-50">
@@ -49,7 +47,6 @@ export const TopNav: React.FC<Props> = ({
             onClick={() => onNavigate?.(user ? "dashboard" : "editor")}
             title="Home"
           >
-            {/* icon-only on mobile, full logo on desktop */}
             <span className="sm:hidden">
               <Logo iconOnly className="w-7 h-7" />
             </span>
@@ -63,7 +60,7 @@ export const TopNav: React.FC<Props> = ({
         <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
           {user ? (
             <>
-              {/* Credits (compact on mobile) */}
+              {/* Credits Button */}
               <button
                 onClick={onAddCredits}
                 className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 sm:px-3 py-1.5 rounded-full transition-colors border border-indigo-200 group"
@@ -74,25 +71,21 @@ export const TopNav: React.FC<Props> = ({
                   className="fill-indigo-500 group-hover:scale-110 transition-transform"
                 />
 
-                {/* always show number */}
-                {/* ✅ UPDATED: Key forces re-render animation when number changes */}
+                {/* ✅ Key forces re-render/animation on change */}
                 <span 
                   key={displayCredits} 
-                  className="text-xs sm:text-sm font-bold tabular-nums animate-in fade-in zoom-in duration-300"
+                  className="text-xs sm:text-sm font-bold tabular-nums animate-pulse"
                 >
                   {displayCredits}
                 </span>
 
-                {/* only show label on >= sm */}
                 <span className="hidden sm:inline text-sm font-bold">Credits</span>
 
-                {/* plus icon only really needed on desktop */}
                 <span className="hidden sm:inline">
                   <Plus size={12} className="ml-1" />
                 </span>
               </button>
 
-              {/* Avatar + details (details hidden on mobile) */}
               <div className="flex items-center gap-2 sm:gap-3 border-l border-slate-200 pl-2 sm:pl-4">
                 <img
                   src={user.avatar}
@@ -105,7 +98,6 @@ export const TopNav: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* Logout */}
               <button
                 onClick={onLogout}
                 className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
