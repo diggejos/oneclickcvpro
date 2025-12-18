@@ -72,6 +72,8 @@ export const Editor: React.FC<EditorProps> = ({
   const [appState, setAppState] = useState<AppState>(
     initialResume?.baseResumeData ? AppState.BASE_READY : AppState.IDLE
   );
+  
+  const [previewResumeData, setPreviewResumeData] = useState<ResumeData | null>(null);
 
   const [config, setConfig] = useState<ResumeConfig>(
     initialResume?.config || {
@@ -122,15 +124,32 @@ export const Editor: React.FC<EditorProps> = ({
   useEffect(() => {
     onRegisterActions({
       getResume: () => (viewMode === "tailored" ? tailoredResumeData : baseResumeData),
+  
       updateResume: (newData: ResumeData) => {
+        // apply permanently, also clear preview
+        setPreviewResumeData(null);
         if (viewMode === "tailored") setTailoredResumeData(newData);
         else setBaseResumeData(newData);
       },
+  
       isTailored: () => viewMode === "tailored",
+  
+      previewResume: (data: ResumeData) => {
+        setPreviewResumeData(data);
+        // on mobile jump to preview so user can see the change
+        setMobileTab("preview");
+      },
+  
+      clearPreview: () => {
+        setPreviewResumeData(null);
+      },
+  
+      isPreviewing: () => !!previewResumeData,
     });
-
+  
     return () => onRegisterActions(null);
-  }, [baseResumeData, tailoredResumeData, viewMode, onRegisterActions]);
+  }, [baseResumeData, tailoredResumeData, viewMode, onRegisterActions, previewResumeData]);
+
 
   const handleImageUpload = (file: File) => {
     const reader = new FileReader();
@@ -248,7 +267,12 @@ export const Editor: React.FC<EditorProps> = ({
   };
 
   const activeDataRaw =
-    viewMode === "tailored" && tailoredResumeData ? tailoredResumeData : baseResumeData;
+    previewResumeData
+      ? previewResumeData
+      : viewMode === "tailored" && tailoredResumeData
+      ? tailoredResumeData
+      : baseResumeData;
+
 
   const activeResumeData = activeDataRaw
     ? { ...activeDataRaw, profileImage: profileImage || activeDataRaw.profileImage }
@@ -590,6 +614,19 @@ export const Editor: React.FC<EditorProps> = ({
                   <Layers size={12} /> Tailored
                 </button>
               </div>
+              {previewResumeData && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold px-2 py-1 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    Previewing proposal
+                  </span>
+                  <button
+                    onClick={() => setPreviewResumeData(null)}
+                    className="text-xs font-bold px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-600 hover:text-indigo-600 shadow-sm"
+                  >
+                    Exit preview
+                  </button>
+                </div>
+              )}
 
               {/* ✅ Manual Edit preserved */}
               <button
