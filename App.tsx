@@ -99,19 +99,26 @@ const App: React.FC = () => {
   // --- HELPER: Fetch latest user data ---
   const fetchMe = async (userId: string) => {
     if (!BACKEND_URL) return;
-    const res = await fetch(`${BACKEND_URL}/api/users/me?t=${Date.now()}`, {
-      headers: { "x-user-id": userId },
-      cache: "no-store",
-    });
-    const data = await res.json().catch(() => ({}));
-    return Number(data?.credits ?? data?.user?.credits ?? data?.data?.credits);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/users/me?t=${Date.now()}`, {
+        headers: { "x-user-id": userId },
+        cache: "no-store",
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const credits = data?.credits ?? data?.user?.credits;
+      // Ensure we strictly return a number, or null if undefined
+      return typeof credits === 'number' ? credits : null;
+    } catch {
+      return null;
+    }
   };
 
   const updateCreditsInState = (newCredits: number) => {
     setUser((currentUser) => {
-      if (!currentUser || currentUser.credits === newCredits) return currentUser;
+      if (!currentUser) return null;
+      if (currentUser.credits === newCredits) return currentUser; // No change
       
-      console.log("⚡ Auto-Syncing credits:", newCredits);
       const updated = { ...currentUser, credits: newCredits };
       localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updated));
       return updated;
@@ -129,9 +136,10 @@ const App: React.FC = () => {
     const runVerification = async () => {
        if (!user?.id || !sessionId) return;
 
+       // A) Fast Path: Manual Verification with Retry
        for (let i = 0; i < 3; i++) {
           try {
-             console.log(`[Verify] Attempt ${i + 1} for session ${sessionId}`);
+             // console.log(`[Verify] Attempt ${i + 1} for session ${sessionId}`);
              const res = await fetch(`${BACKEND_URL}/api/credits/verify-session?t=${Date.now()}`, {
                method: "POST",
                headers: { "Content-Type": "application/json", "x-user-id": user.id },
@@ -159,10 +167,16 @@ const App: React.FC = () => {
   // --- BACKGROUND HEARTBEAT ---
   useEffect(() => {
     if (!user?.id) return;
+    
+    // Initial fetch on mount
+    fetchMe(user.id).then(c => { if(c !== null) updateCreditsInState(c) });
+
     const interval = setInterval(async () => {
       try {
         const credits = await fetchMe(user.id);
-        if (Number.isFinite(credits)) updateCreditsInState(credits);
+        if (credits !== null && Number.isFinite(credits)) {
+          updateCreditsInState(credits);
+        }
       } catch (e) { /* silent */ }
     }, 4000); 
     return () => clearInterval(interval);
@@ -355,7 +369,7 @@ const App: React.FC = () => {
         <Route path="/about" element={<AboutPage onBack={() => navigate(user ? "/dashboard" : "/editor")} />} />
         <Route path="/contact" element={<ContactPage onBack={() => navigate(user ? "/dashboard" : "/editor")} />} />
         
-        {/* ✅ Pricing Route with auth logic */}
+        {/* Pricing Route */}
         <Route path="/pricing" element={
           <PricingPage 
             onBack={() => navigate(user ? "/dashboard" : "/editor")} 
@@ -373,7 +387,6 @@ const App: React.FC = () => {
         <Route path="*" element={<Navigate to="/editor" replace />} />
       </Routes>
       
-      {/* ✅ UPDATED: Global Chat with Props */}
       <GlobalChatAssistant 
         messages={chatMessages} 
         isOpen={isChatOpen} 
@@ -384,9 +397,9 @@ const App: React.FC = () => {
         onDeclineProposal={handleChatDeclineProposal} 
         hasActiveResume={path === "/editor" && !!editorActionsRef.current} 
         
-        // New Props
+        // Pass Props with Default
         isGuest={!user}
-        userCredits={user?.credits || 0}
+        userCredits={user?.credits ?? 0}
         onLogin={() => setShowAuthModal(true)}
         onAddCredits={() => setShowPricingModal(true)}
       />
