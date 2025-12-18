@@ -1,14 +1,14 @@
-
 import React from 'react';
 import { ArrowLeft, Check, Zap, HelpCircle, Star } from 'lucide-react';
 import { Logo } from './Logo';
 
 interface PricingPageProps {
   onBack: () => void;
-  onGetStarted: () => void;
+  onGetStarted: () => void; // Navigate to editor
+  onBuy: () => void;        // Trigger Auth or Stripe
 }
 
-export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onGetStarted }) => {
+export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onGetStarted, onBuy }) => {
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
       
@@ -38,7 +38,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onGetStarted }
            </h1>
            <p className="text-xl text-indigo-100 mb-8 leading-relaxed">
              Our flexible Credit System means you only pay for what you use. 
-             Create unlimited base resumes for free. Pay only when you use AI to tailor or translate.
+             Create unlimited base resumes for free. Pay only when you use AI to tailor, translate, or export.
            </p>
          </div>
       </header>
@@ -68,14 +68,11 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onGetStarted }
                     <Check size={18} className="text-green-500 flex-shrink-0" />
                     <span>Access to Classic Template</span>
                   </div>
-                   <div className="flex gap-3 text-sm text-slate-700">
-                    <Check size={18} className="text-green-500 flex-shrink-0" />
-                    <span>PDF Export</span>
-                  </div>
+                  {/* PDF Export removed from free tier */}
                </div>
                
                <button onClick={onGetStarted} className="w-full py-3 border-2 border-slate-200 text-slate-700 font-bold rounded-xl hover:border-slate-400 hover:text-slate-900 transition-colors">
-                  Start for Free
+                  Start Building
                </button>
             </div>
 
@@ -101,7 +98,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onGetStarted }
                   </div>
                   <div className="flex gap-3 text-sm text-slate-700">
                     <Check size={18} className="text-green-500 flex-shrink-0" />
-                    <span>Multi-Language Translation</span>
+                    <span>PDF Export & Downloads</span>
                   </div>
                   <div className="flex gap-3 text-sm text-slate-700">
                     <Check size={18} className="text-green-500 flex-shrink-0" />
@@ -109,7 +106,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onGetStarted }
                   </div>
                </div>
                
-               <button onClick={onGetStarted} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200">
+               <button onClick={onBuy} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200">
                   Get Started
                </button>
             </div>
@@ -147,7 +144,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onGetStarted }
                   </div>
                </div>
                
-               <button onClick={onGetStarted} className="w-full py-3 bg-white text-slate-900 font-bold rounded-xl hover:bg-slate-100 transition-colors">
+               <button onClick={onBuy} className="w-full py-3 bg-white text-slate-900 font-bold rounded-xl hover:bg-slate-100 transition-colors">
                   Get Pro Pack
                </button>
             </div>
@@ -161,7 +158,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onGetStarted }
                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                   <h4 className="font-bold text-lg mb-2 flex items-center gap-2"><HelpCircle size={20} className="text-indigo-600"/> How do credits work?</h4>
                   <p className="text-slate-600 text-sm leading-relaxed">
-                     One credit allows you to perform one major AI operation. For example, tailoring your resume to a specific job description costs 1 credit. Translating your resume to another language costs 1 credit. Editing manually is always free.
+                     One credit allows you to perform one major action. For example, tailoring your resume to a job description costs 1 credit. Exporting your final PDF costs 1 credit. Editing manually is always free.
                   </p>
                </div>
                
@@ -173,9 +170,9 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onGetStarted }
                </div>
 
                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                  <h4 className="font-bold text-lg mb-2 flex items-center gap-2"><HelpCircle size={20} className="text-indigo-600"/> Can I download my resume for free?</h4>
+                  <h4 className="font-bold text-lg mb-2 flex items-center gap-2"><HelpCircle size={20} className="text-indigo-600"/> Is PDF export free?</h4>
                   <p className="text-slate-600 text-sm leading-relaxed">
-                     Yes! Generating the base resume from your LinkedIn profile and downloading the PDF is completely free. You only pay for the AI tailoring features.
+                     You can build, edit, and preview your resume for free. To download the final high-quality PDF specifically tailored for ATS systems, you will need to use 1 credit.
                   </p>
                </div>
             </div>
