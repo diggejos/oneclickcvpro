@@ -294,17 +294,40 @@ import crypto from "crypto";
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password, name } = req.body;
+    const normalizedEmail = String(email || "").trim().toLowerCase();
 
-    const existing = await User.findOne({ email });
+
+    const existing = await User.findOne({ normalizedEmail });
     if (existing) {
       return res.status(400).json({ error: "Email already used" });
+    }
+
+    // ✅ PASSWORD RULES (server-side)
+    // min 8 chars, at least 1 number, at least 1 uppercase letter
+    const passwordPattern = /^(?=.*\d)(?=.*[A-Z]).{8,}$/;
+    if (!passwordPattern.test(password || "")) {
+      return res.status(400).json({
+        error: "Password must be at least 8 characters and include 1 number and 1 uppercase letter."
+      });
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
     const verificationToken = crypto.randomBytes(32).toString("hex");
 
     await User.create({
-      email,
+      normalizedEmail,
+      passwordHash,
+      name,
+      verificationToken,
+      isVerified: false
+    });
+
+    // ... bleibt unverändert
+
+    const verificationToken = crypto.randomBytes(32).toString("hex");
+
+    await User.create({
+      normalizedEmail,
       passwordHash,
       name,
       verificationToken,
