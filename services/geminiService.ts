@@ -293,22 +293,46 @@ interface UnifiedChatResult {
   };
 }
 
-/**
- * Temporary unified chat agent stub.
- * You can later replace with real Gemini logic.
- */
 export async function unifiedChatAgent(
   history: { role: "user" | "model"; text: string }[],
   text: string,
   currentResumeData: ResumeData | null
 ): Promise<UnifiedChatResult> {
-  return {
-    text: "AI assistant is not fully configured on this deployment yet. You said: " + text,
-    proposal: currentResumeData
-      ? {
-          data: currentResumeData,
-          metadata: { source: "ai", improvedSections: [] },
-        }
-      : undefined,
-  };
+
+  // 🟡 No resume loaded → support mode
+  if (!currentResumeData) {
+    return {
+      text:
+        "I can help with questions about the app. Open the editor if you want me to change your CV.",
+    };
+  }
+
+  try {
+    // 🔵 Ask Gemini to modify the resume
+    const result = await updateResumeWithChat(currentResumeData, text);
+
+    return {
+      text: "I’ve prepared a suggested change. Would you like to apply it?",
+      proposal: {
+        data: result.data,
+        metadata: {
+          source: "ai",
+          improvedSections: [],
+        },
+      },
+    };
+  } catch (err: any) {
+    const msg = String(err?.message || err);
+
+    if (/overloaded|503|unavailable/i.test(msg)) {
+      return {
+        text: "I’m a bit busy right now 😅 Please try again in a moment.",
+      };
+    }
+
+    return {
+      text: "Something went wrong while editing your resume. Please try again.",
+    };
+  }
 }
+
