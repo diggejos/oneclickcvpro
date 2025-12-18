@@ -159,48 +159,54 @@ const App: React.FC = () => {
       localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updated));
     };
 
-    if (isSuccess) {
-      (async () => {
-        try {
-          const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
-          log("success=true detected", { current, BACKEND_URL });
-
-          if (!current?.id) {
-            alert("Payment successful. Please log in again to refresh credits.");
-            window.history.replaceState({}, "", window.location.pathname);
-            return;
-          }
-
-          const before = Number(current.credits || 0);
-          let latest = before;
-
-          for (let attempt = 0; attempt < 30; attempt++) {
-            try {
-              const { credits, data } = await fetchMe(current.id);
-              log("me response", { attempt, credits, data });
-
-              if (Number.isFinite(credits)) {
-                latest = credits;
-                updateCreditsInState(latest);
-                if (latest > before) break;
-              }
-            } catch (e: any) {
-              log("poll error", e?.message || e);
-            }
-            await new Promise((r) => setTimeout(r, 1000));
-          }
-
-          window.history.replaceState({}, "", window.location.pathname);
-
-          if (latest > before) alert(`Payment successful! Credits updated: ${before} → ${latest}`);
-          else alert("Payment successful! Credits will appear shortly. (If not, reload once.)");
-        } catch (e: any) {
-          console.error("[stripe-success] fatal", e);
-          alert(`Payment success handler failed: ${e?.message || e}`);
-          window.history.replaceState({}, "", window.location.pathname);
+  // inside useEffect in App.tsx
+  if (isSuccess) {
+    (async () => {
+      try {
+        const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
+        if (!current?.id) {
+          // ... existing alert logic
+          return;
         }
-      })();
-    }
+  
+        const before = Number(current.credits || 0);
+        let latest = before;
+  
+        // Poll for up to 30 seconds (standard for Stripe webhooks)
+        for (let attempt = 0; attempt < 30; attempt++) {
+          try {
+            const { credits } = await fetchMe(current.id);
+            
+            if (Number.isFinite(credits) && credits > before) {
+              latest = credits;
+              
+              // 1. Update the React State (This updates the Navbar instantly)
+              const updatedUser = { ...current, credits: latest };
+              setUser(updatedUser); 
+              
+              // 2. Update LocalStorage for persistence
+              localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updatedUser));
+              
+              break; // Exit loop once credits are confirmed higher
+            }
+          } catch (e) {
+            console.error("Polling error", e);
+          }
+          await new Promise((r) => setTimeout(r, 1500)); // Wait 1.5s between checks
+        }
+  
+        // Clear the "success=true" from URL without refreshing
+        window.history.replaceState({}, "", window.location.pathname);
+  
+        if (latest > before) {
+           // UI Feedback
+           alert(`Payment successful! Your credits have been updated.`);
+        }
+      } catch (e: any) {
+        console.error("[stripe-success] fatal", e);
+      }
+    })();
+  }
 
     const onFocus = async () => {
       try {
