@@ -46,25 +46,16 @@ export interface EditorActions {
 // helpers: map “page view” to URL
 const toPath = (page: PageView, sub?: any) => {
   switch (page) {
-    case "dashboard":
-      return "/dashboard";
-    case "editor":
-      return "/editor";
-    case "about":
-      return "/about";
-    case "contact":
-      return "/contact";
-    case "pricing":
-      return "/pricing";
-    case "blog":
-      return "/blog";
-    case "legal":
-      return sub ? `/legal/${sub}` : "/legal";
-    case "product":
-      return sub ? `/product/${sub}` : "/product";
+    case "dashboard": return "/dashboard";
+    case "editor": return "/editor";
+    case "about": return "/about";
+    case "contact": return "/contact";
+    case "pricing": return "/pricing";
+    case "blog": return "/blog";
+    case "legal": return sub ? `/legal/${sub}` : "/legal";
+    case "product": return sub ? `/product/${sub}` : "/product";
     case "home":
-    default:
-      return "/";
+    default: return "/";
   }
 };
 
@@ -72,9 +63,18 @@ const App: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // OLD STATE (kept)
   const [subPage, setSubPage] = useState<any>(null);
-  const [user, setUser] = useState<User | null>(null);
+
+  // ✅ IMPROVED: Lazy initialize user so it's available on first render
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_USER);
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
+
   const [savedResumes, setSavedResumes] = useState<SavedResume[]>([]);
   const [currentResume, setCurrentResume] = useState<SavedResume | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -92,43 +92,28 @@ const App: React.FC = () => {
   // Derive “view” from URL (instead of state)
   const path = location.pathname.replace(/\/+$/, "") || "/";
   const viewFromPath: PageView =
-    path === "/dashboard"
-      ? "dashboard"
-      : path === "/editor"
-      ? "editor"
-      : path === "/about"
-      ? "about"
-      : path === "/contact"
-      ? "contact"
-      : path === "/pricing"
-      ? "pricing"
-      : path.startsWith("/legal")
-      ? "legal"
-      : path.startsWith("/product")
-      ? "product"
-      : path === "/blog"
-      ? "blog"
-      : path === "/"
-      ? "home"
+    path === "/dashboard" ? "dashboard"
+      : path === "/editor" ? "editor"
+      : path === "/about" ? "about"
+      : path === "/contact" ? "contact"
+      : path === "/pricing" ? "pricing"
+      : path.startsWith("/legal") ? "legal"
+      : path.startsWith("/product") ? "product"
+      : path === "/blog" ? "blog"
       : "home";
 
   // --- IMPROVED USER LOAD & STRIPE HANDLER ---
   useEffect(() => {
-    // 1. Initial Load
-    const storedUser = localStorage.getItem(STORAGE_KEY_USER);
-    let currentUserData = null;
-    if (storedUser) {
-      currentUserData = JSON.parse(storedUser);
-      setUser(currentUserData);
-      fetchResumesFromDB(currentUserData.id);
+    // 1. Initial Resume Load (User is already loaded via lazy init)
+    if (user?.id) {
+      fetchResumesFromDB(user.id);
     }
 
     // 2. Check for Payment Success
     const params = new URLSearchParams(window.location.search);
     const isSuccess = params.get("success") === "true";
-    const sessionId = params.get("session_id"); // ✅ Get Session ID
+    const sessionId = params.get("session_id");
 
-    // Helpers
     const fetchMe = async (userId: string) => {
       if (!BACKEND_URL) throw new Error("VITE_BACKEND_URL is empty");
       const res = await fetch(`${BACKEND_URL}/api/users/me?t=${Date.now()}`, {
@@ -140,44 +125,55 @@ const App: React.FC = () => {
     };
 
     const updateCreditsInState = (newCredits: number) => {
-      const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
-      if (!current?.id) return;
-      const updated = { ...current, credits: newCredits };
-      setUser(updated); // React update
-      localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updated)); // Persist
+      setUser((currentUser) => {
+        if (!currentUser) return null;
+        const updated = { ...currentUser, credits: newCredits };
+        localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updated));
+        return updated;
+      });
     };
 
     const runVerification = async () => {
-       if (!currentUserData?.id) return;
+       if (!user?.id) return;
 
        // A) FAST PATH: Verify specific session immediately
        if (sessionId) {
           try {
+             console.log("Verifying payment session:", sessionId);
              const res = await fetch(`${BACKEND_URL}/api/credits/verify-session?t=${Date.now()}`, {
                method: "POST",
-               headers: { "Content-Type": "application/json", "x-user-id": currentUserData.id },
+               headers: { "Content-Type": "application/json", "x-user-id": user.id },
                body: JSON.stringify({ sessionId })
              });
              const data = await res.json();
+             
              if (data.success && typeof data.credits === 'number') {
+                // 1. Immediate Local Update
                 updateCreditsInState(data.credits);
                 window.history.replaceState({}, "", window.location.pathname);
-                alert("Payment Successful! Credits updated.");
-                return; // Done
+                alert("Payment Successful! Your credits have been updated.");
+
+                // 2. SAFETY REFRESH: Fetch from DB again after 1s to be absolutely sure
+                setTimeout(async () => {
+                   const fresh = await fetchMe(user.id);
+                   if (Number.isFinite(fresh)) updateCreditsInState(fresh);
+                }, 1000);
+                
+                return;
              }
           } catch(e) { console.error("Fast verify failed", e); }
        }
 
-       // B) SLOW PATH: Polling fallback
-       const before = Number(currentUserData.credits || 0);
+       // B) SLOW PATH: Polling fallback (if fast path failed or no session_id)
+       const before = Number(user.credits || 0);
        let latest = before;
        for (let attempt = 0; attempt < 30; attempt++) {
          try {
-           const credits = await fetchMe(currentUserData.id);
+           const credits = await fetchMe(user.id);
            if (Number.isFinite(credits) && credits > before) {
               latest = credits;
               updateCreditsInState(latest);
-              alert("Payment Successful! Credits updated.");
+              alert("Payment Successful! Your credits have been updated.");
               break;
            }
          } catch(e) { console.warn("Poll error", e); }
@@ -186,11 +182,10 @@ const App: React.FC = () => {
        window.history.replaceState({}, "", window.location.pathname);
     };
 
-    if (isSuccess && currentUserData) {
+    if (isSuccess && user) {
        runVerification();
     }
 
-    // Focus handler
     const onFocus = async () => {
       const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
       if (current?.id) {
@@ -202,9 +197,9 @@ const App: React.FC = () => {
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, []);
+  }, []); // Empty dependency array is fine due to lazy init + ref logic
 
-  // SEO title (kept, now driven by URL)
+  // SEO title
   useEffect(() => {
     let title = "OneClickCVPro | Instant AI Resume Builder";
     if (viewFromPath === "about") title = "About Us | OneClickCVPro";
@@ -276,20 +271,12 @@ const App: React.FC = () => {
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem(STORAGE_KEY_USER);
-  
-    // clear dashboard/editor-related state
     setSavedResumes([]);
     setCurrentResume(null);
-  
-    // IMPORTANT: clear any in-editor loaded resume data by forcing a fresh editor instance
     navigate("/editor", { replace: true });
-  
-    // optional: also clear any editor actions ref so the global chat isn't "resume connected"
     editorActionsRef.current = null;
   };
 
-
-  // IMPORTANT: old "handleNavigate" now changes URL
   const handleNavigate = (page: PageView, sub?: any) => {
     setSubPage(sub || null);
     navigate(toPath(page, sub));
@@ -310,8 +297,6 @@ const App: React.FC = () => {
   
     try {
       const currentResumeData = editorActionsRef.current?.getResume() || null;
-  
-      // IMPORTANT: build history from latest state (avoid stale closure)
       const history = ([
         ...chatMessages,
         { role: "user", text },
@@ -337,7 +322,6 @@ const App: React.FC = () => {
         },
       ]);
   
-      // OPTIONAL: if a proposal arrives, auto-preview it (see section 2)
       if (result.proposal?.data) {
         editorActionsRef.current?.previewResume?.(result.proposal.data);
       }
@@ -350,7 +334,6 @@ const App: React.FC = () => {
       setIsChatLoading(false);
     }
   };
-
 
   const spendCredit = async (reason: string) => {
     if (!user) throw Object.assign(new Error("Not logged in"), { status: 401 });
@@ -382,7 +365,6 @@ const App: React.FC = () => {
         newMsgs[index].proposal!.status = "accepted";
         return newMsgs;
       });
-  
       editorActionsRef.current?.updateResume(msg.proposal.data);
       editorActionsRef.current?.clearPreview?.();
     }
@@ -394,7 +376,6 @@ const App: React.FC = () => {
       if (newMsgs[index].proposal) newMsgs[index].proposal!.status = "declined";
       return newMsgs;
     });
-  
     editorActionsRef.current?.clearPreview?.();
   };
 
@@ -437,18 +418,6 @@ const App: React.FC = () => {
     setCurrentResume(resume);
   };
 
-  const handleAddCredits = () => {
-    if (!user) return;
-    setShowPricingModal(false);
-  };
-
-  // ROUTE GUARDS
-  const RequireUser: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    if (user) return <>{children}</>;
-    // open login modal and send to editor
-    if (!showAuthModal) setShowAuthModal(true);
-    return <Navigate to="/editor" replace />;
-  };
   const handleCreditsPurchased = (newCredits: number) => {
     if (user) {
       const updatedUser = { ...user, credits: newCredits };
@@ -456,14 +425,19 @@ const App: React.FC = () => {
     }
     setShowPricingModal(false);
   };
+
+  const RequireUser: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    if (user) return <>{children}</>;
+    if (!showAuthModal) setShowAuthModal(true);
+    return <Navigate to="/editor" replace />;
+  };
+
   return (
     <>
       <TopNav
         user={user}
-        // ✅ NEW: Explicitly pass credits prop to force update
-        credits={user?.credits}
-        key={user?.credits} // ✅ NUCLEAR OPTION: Forces re-render if prop fails
-        
+        // ✅ Explicitly pass credits so TopNav sees the update instantly
+        credits={user?.credits} 
         onAddCredits={() => setShowPricingModal(true)}
         onLogout={handleLogout}
         onLogin={() => setShowAuthModal(true)}
@@ -472,17 +446,15 @@ const App: React.FC = () => {
       />
 
       <Routes>
-        {/* special verify routes */}
         <Route path="/verified" element={<VerifiedPage />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
 
-        {/* public pages */}
         <Route path="/" element={<Navigate to="/editor" replace />} />
         <Route
             path="/editor"
             element={
               <Editor
-                key={`${editorSessionKey}-${user?.id ?? "guest"}`} // ✅ forces full reset on logout/login
+                key={`${editorSessionKey}-${user?.id ?? "guest"}`} 
                 initialResume={currentResume}
                 onSave={handleSaveResume}
                 onBack={() => {
@@ -519,12 +491,8 @@ const App: React.FC = () => {
         <Route path="/contact" element={<ContactPage onBack={() => navigate(user ? "/dashboard" : "/editor")} />} />
         <Route path="/pricing" element={<PricingPage onBack={() => navigate(user ? "/dashboard" : "/editor")} onGetStarted={() => navigate("/editor")} />} />
         <Route path="/blog" element={<BlogPage onBack={() => navigate(user ? "/dashboard" : "/editor")} initialPostId={subPage} />} />
-
-        {/* dynamic-ish pages (simple) */}
         <Route path="/legal/:type" element={<LegalPage type={subPage as LegalPageType} onBack={() => navigate(user ? "/dashboard" : "/editor")} />} />
         <Route path="/product/:type" element={<ProductPage type={subPage as ProductType} onBack={() => navigate(user ? "/dashboard" : "/editor")} onStart={() => navigate("/editor")} />} />
-
-        {/* fallback */}
         <Route path="*" element={<Navigate to="/editor" replace />} />
       </Routes>
 
