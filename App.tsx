@@ -126,30 +126,39 @@ const App: React.FC = () => {
     const runVerification = async () => {
        if (!user?.id) return;
 
-       // A) Fast Path: Manual Verification
+       // A) Fast Path: Manual Verification (Retry up to 3 times)
        if (sessionId) {
-          try {
-             const res = await fetch(`${BACKEND_URL}/api/credits/verify-session?t=${Date.now()}`, {
-               method: "POST",
-               headers: { "Content-Type": "application/json", "x-user-id": user.id },
-               body: JSON.stringify({ sessionId })
-             });
-             const data = await res.json();
-             
-             if (data.success && typeof data.credits === 'number') {
-                updateCreditsInState(data.credits);
-                window.history.replaceState({}, "", window.location.pathname);
-                alert(`Payment Successful! Balance: ${data.credits} credits.`);
-                return;
-             }
-          } catch(e) { console.error("Fast verify failed", e); }
+          for (let i = 0; i < 3; i++) {
+            try {
+               console.log(`[Verify] Attempt ${i + 1} for session ${sessionId}`);
+               const res = await fetch(`${BACKEND_URL}/api/credits/verify-session?t=${Date.now()}`, {
+                 method: "POST",
+                 headers: { "Content-Type": "application/json", "x-user-id": user.id },
+                 body: JSON.stringify({ sessionId })
+               });
+               const data = await res.json();
+               
+               if (data.success && typeof data.credits === 'number') {
+                  updateCreditsInState(data.credits);
+                  window.history.replaceState({}, "", window.location.pathname);
+                  alert(`Payment Successful! Balance: ${data.credits} credits.`);
+                  return; // ✅ Success, exit function
+               } else {
+                 console.warn("Verify attempt failed:", data.message);
+               }
+            } catch(e) { console.error("Verify fetch error", e); }
+            
+            // Wait 1s between attempts if failed
+            await new Promise((r) => setTimeout(r, 1000));
+          }
        }
 
        // B) Fallback: Aggressive Polling
+       console.log("Falling back to polling...");
        const before = Number(user.credits || 0);
        let latest = before;
-       // Poll more frequently: 400ms for 30 seconds
-       for (let attempt = 0; attempt < 75; attempt++) {
+       
+       for (let attempt = 0; attempt < 60; attempt++) {
          try {
            const credits = await fetchMe(user.id);
            if (Number.isFinite(credits) && credits > before) {
@@ -159,7 +168,8 @@ const App: React.FC = () => {
               break;
            }
          } catch(e) {}
-         await new Promise((r) => setTimeout(r, 400));
+         // Poll every 500ms
+         await new Promise((r) => setTimeout(r, 500));
        }
        window.history.replaceState({}, "", window.location.pathname);
     };
