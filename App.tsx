@@ -65,7 +65,7 @@ const App: React.FC = () => {
 
   const [subPage, setSubPage] = useState<any>(null);
 
-  // ✅ IMPROVED: Lazy initialize user so it's available on first render
+  // ✅ Lazy initialize user to prevent flicker
   const [user, setUser] = useState<User | null>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY_USER);
@@ -89,7 +89,7 @@ const App: React.FC = () => {
   const [editorSessionKey, setEditorSessionKey] = useState(0);
 
 
-  // Derive “view” from URL (instead of state)
+  // Derive “view” from URL
   const path = location.pathname.replace(/\/+$/, "") || "/";
   const viewFromPath: PageView =
     path === "/dashboard" ? "dashboard"
@@ -102,14 +102,14 @@ const App: React.FC = () => {
       : path === "/blog" ? "blog"
       : "home";
 
-  // --- IMPROVED USER LOAD & STRIPE HANDLER ---
+  // --- PAYMENT & USER LOAD LOGIC ---
   useEffect(() => {
-    // 1. Initial Resume Load (User is already loaded via lazy init)
+    // 1. Initial Resume Load
     if (user?.id) {
       fetchResumesFromDB(user.id);
     }
 
-    // 2. Check for Payment Success
+    // 2. Check URL for Payment Success
     const params = new URLSearchParams(window.location.search);
     const isSuccess = params.get("success") === "true";
     const sessionId = params.get("session_id");
@@ -125,8 +125,10 @@ const App: React.FC = () => {
     };
 
     const updateCreditsInState = (newCredits: number) => {
+      console.log("Force updating credits to:", newCredits);
       setUser((currentUser) => {
         if (!currentUser) return null;
+        // Force new object reference
         const updated = { ...currentUser, credits: newCredits };
         localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updated));
         return updated;
@@ -148,23 +150,15 @@ const App: React.FC = () => {
              const data = await res.json();
              
              if (data.success && typeof data.credits === 'number') {
-                // 1. Immediate Local Update
                 updateCreditsInState(data.credits);
                 window.history.replaceState({}, "", window.location.pathname);
-                alert("Payment Successful! Your credits have been updated.");
-
-                // 2. SAFETY REFRESH: Fetch from DB again after 1s to be absolutely sure
-                setTimeout(async () => {
-                   const fresh = await fetchMe(user.id);
-                   if (Number.isFinite(fresh)) updateCreditsInState(fresh);
-                }, 1000);
-                
+                alert(`Payment Successful! You now have ${data.credits} credits.`);
                 return;
              }
           } catch(e) { console.error("Fast verify failed", e); }
        }
 
-       // B) SLOW PATH: Polling fallback (if fast path failed or no session_id)
+       // B) SLOW PATH: Polling fallback
        const before = Number(user.credits || 0);
        let latest = before;
        for (let attempt = 0; attempt < 30; attempt++) {
@@ -173,7 +167,7 @@ const App: React.FC = () => {
            if (Number.isFinite(credits) && credits > before) {
               latest = credits;
               updateCreditsInState(latest);
-              alert("Payment Successful! Your credits have been updated.");
+              alert(`Payment Successful! You now have ${latest} credits.`);
               break;
            }
          } catch(e) { console.warn("Poll error", e); }
@@ -197,15 +191,13 @@ const App: React.FC = () => {
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, []); // Empty dependency array is fine due to lazy init + ref logic
+  }, []); // Only run on mount (and internal logic handles user updates)
 
   // SEO title
   useEffect(() => {
     let title = "OneClickCVPro | Instant AI Resume Builder";
     if (viewFromPath === "about") title = "About Us | OneClickCVPro";
-    else if (viewFromPath === "blog") title = "Career Blog | OneClickCVPro";
     else if (viewFromPath === "pricing") title = "Pricing | OneClickCVPro";
-    else if (viewFromPath === "contact") title = "Contact Support | OneClickCVPro";
     else if (viewFromPath === "dashboard") title = "My Dashboard | OneClickCVPro";
     else if (viewFromPath === "editor") title = "Resume Editor | OneClickCVPro";
     document.title = title;
@@ -436,8 +428,10 @@ const App: React.FC = () => {
     <>
       <TopNav
         user={user}
-        // ✅ Explicitly pass credits so TopNav sees the update instantly
         credits={user?.credits} 
+        // ✅ NUCLEAR OPTION: This key forces TopNav to re-mount when credits change
+        key={`topnav-${user?.credits}`} 
+        
         onAddCredits={() => setShowPricingModal(true)}
         onLogout={handleLogout}
         onLogin={() => setShowAuthModal(true)}
