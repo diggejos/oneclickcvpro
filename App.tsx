@@ -83,17 +83,28 @@ const App: React.FC = () => {
   const editorActionsRef = useRef<EditorActions | null>(null);
   const [editorSessionKey, setEditorSessionKey] = useState(0);
 
-  const path = location.pathname.replace(/\/+$/, "") || "/";
-  const viewFromPath: PageView =
-    path === "/dashboard" ? "dashboard"
-      : path === "/editor" ? "editor"
-      : path === "/about" ? "about"
-      : path === "/contact" ? "contact"
-      : path === "/pricing" ? "pricing"
-      : path.startsWith("/legal") ? "legal"
-      : path.startsWith("/product") ? "product"
-      : path === "/blog" ? "blog"
-      : "home";
+  // --- HELPER: Fetch latest user data ---
+  const fetchMe = async (userId: string) => {
+    if (!BACKEND_URL) return;
+    const res = await fetch(`${BACKEND_URL}/api/users/me?t=${Date.now()}`, {
+      headers: { "x-user-id": userId },
+      cache: "no-store",
+    });
+    const data = await res.json().catch(() => ({}));
+    return Number(data?.credits ?? data?.user?.credits ?? data?.data?.credits);
+  };
+
+  const updateCreditsInState = (newCredits: number) => {
+    // Only update if different to prevent re-renders
+    setUser((currentUser) => {
+      if (!currentUser || currentUser.credits === newCredits) return currentUser;
+      
+      console.log("⚡ Auto-Syncing credits:", newCredits);
+      const updated = { ...currentUser, credits: newCredits };
+      localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   // --- PAYMENT & LOAD LOGIC ---
   useEffect(() => {
@@ -103,31 +114,10 @@ const App: React.FC = () => {
     const isSuccess = params.get("success") === "true";
     const sessionId = params.get("session_id");
 
-    const fetchMe = async (userId: string) => {
-      if (!BACKEND_URL) return;
-      const res = await fetch(`${BACKEND_URL}/api/users/me?t=${Date.now()}`, {
-        headers: { "x-user-id": userId },
-        cache: "no-store",
-      });
-      const data = await res.json().catch(() => ({}));
-      return Number(data?.credits ?? data?.user?.credits ?? data?.data?.credits);
-    };
-
-    const updateCreditsInState = (newCredits: number) => {
-      console.log("⚡ Updating credits:", newCredits);
-      setUser((currentUser) => {
-        if (!currentUser) return null;
-        const updated = { ...currentUser, credits: newCredits };
-        localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updated));
-        return updated;
-      });
-    };
-
     const runVerification = async () => {
        if (!user?.id || !sessionId) return;
 
        // A) Fast Path: Manual Verification with Retry
-       // We try 3 times because sometimes the backend is waiting for the webhook
        for (let i = 0; i < 3; i++) {
           try {
              console.log(`[Verify] Attempt ${i + 1} for session ${sessionId}`);
@@ -142,32 +132,10 @@ const App: React.FC = () => {
                 updateCreditsInState(data.credits);
                 window.history.replaceState({}, "", window.location.pathname);
                 alert(`Payment Successful! Balance: ${data.credits} credits.`);
-                return; // ✅ Success, exit function
+                return;
              }
           } catch(e) { console.error("Verify fetch error", e); }
-          
-          // Wait 1s between attempts
           await new Promise((r) => setTimeout(r, 1000));
-       }
-
-       // B) Fallback: Aggressive Polling
-       // If manual verification logic failed or timed out, we fallback to just checking the user object repeatedly
-       console.log("Falling back to polling...");
-       const before = Number(user.credits || 0);
-       let latest = before;
-       
-       for (let attempt = 0; attempt < 60; attempt++) {
-         try {
-           const credits = await fetchMe(user.id);
-           if (Number.isFinite(credits) && credits > before) {
-              latest = credits;
-              updateCreditsInState(latest);
-              alert(`Payment Successful! Balance: ${latest} credits.`);
-              break;
-           }
-         } catch(e) {}
-         // Poll every 500ms
-         await new Promise((r) => setTimeout(r, 500));
        }
        window.history.replaceState({}, "", window.location.pathname);
     };
@@ -175,18 +143,25 @@ const App: React.FC = () => {
     if (isSuccess && user) {
        runVerification();
     }
+  }, []); // Run once on mount
 
-    const onFocus = async () => {
-      if (user?.id) {
-        try {
-           const credits = await fetchMe(user.id);
-           if (Number.isFinite(credits)) updateCreditsInState(credits);
-        } catch(e) {}
-      }
-    };
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, []);
+  // --- ✅ NEW: BACKGROUND HEARTBEAT (The Fix) ---
+  // Checks for credit updates every 4 seconds automatically
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const credits = await fetchMe(user.id);
+        if (Number.isFinite(credits)) {
+          updateCreditsInState(credits);
+        }
+      } catch (e) { /* ignore silent background error */ }
+    }, 4000); // Check every 4 seconds
+
+    return () => clearInterval(interval);
+  }, [user?.id]);
+
 
   // SEO
   useEffect(() => {
@@ -317,7 +292,6 @@ const App: React.FC = () => {
     return data.credits;
   };
 
-  // --- Handlers ---
   const handleCreateNew = () => { setCurrentResume(null); navigate("/editor"); };
   const handleOpenResume = (r: SavedResume) => { setCurrentResume(r); navigate("/editor"); };
   const handleDeleteResume = (id: string) => {
