@@ -589,11 +589,22 @@ export const Editor: React.FC<EditorProps> = ({
             </div>
           </div>
         )}
-
-        {activeResumeData && (
-          <div className={`p-4 md:p-8 ${isLoading ? "opacity-30 blur-[1px]" : "opacity-100"}`}>
+          {activeResumeData && (
+            <div
+              className={[
+                "p-4 md:p-8 transition-all duration-300",
+                isLoading ? "opacity-30 blur-[1px]" : "opacity-100",
+                isPreviewing
+                  ? "bg-indigo-50/60 border-2 border-dashed border-indigo-300 rounded-xl"
+                  : "",
+              ].join(" ")}
+            >
             <div className="mb-4 flex items-center justify-between text-sm font-medium text-slate-500">
-              <div className="bg-slate-200 p-1 rounded-lg flex text-xs font-bold shadow-inner">
+                <div
+                  className={`bg-slate-200 p-1 rounded-lg flex text-xs font-bold shadow-inner ${
+                    isPreviewing ? "opacity-60 pointer-events-none" : ""
+                  }`}
+                >
                 <button
                   onClick={() => setViewMode("base")}
                   className={`px-4 py-1.5 rounded-md transition-all flex items-center gap-2 ${
@@ -618,6 +629,20 @@ export const Editor: React.FC<EditorProps> = ({
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold px-2 py-1 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
                     Previewing proposal
+                  </span>
+                  <button
+                    onClick={() => setPreviewResumeData(null)}
+                    className="text-xs font-bold px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-600 hover:text-indigo-600 shadow-sm"
+                  >
+                    Exit preview
+                  </button>
+                </div>
+              )}
+
+              {isPreviewing && (
+                <div className="flex items-center gap-2">
+                  <span className="flex items-center gap-1 text-xs font-bold px-2 py-1 rounded bg-indigo-100 text-indigo-700 border border-indigo-200 shadow-sm">
+                    ✨ AI Preview
                   </span>
                   <button
                     onClick={() => setPreviewResumeData(null)}
