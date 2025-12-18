@@ -1,6 +1,3 @@
-// STEP 3 — replace ENTIRE frontend/src/App.tsx with this version
-// (This is your old code + routing. It keeps your functionality.)
-
 import React, { useState, useEffect, useRef } from "react";
 import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 
@@ -60,14 +57,10 @@ const toPath = (page: PageView, sub?: any) => {
     case "pricing":
       return "/pricing";
     case "blog":
-      // if you had subPage for blog post id:
-      // return sub ? `/blog/${sub}` : "/blog";
       return "/blog";
     case "legal":
-      // if you used subPage for legal type, encode it:
       return sub ? `/legal/${sub}` : "/legal";
     case "product":
-      // if you used subPage for product type:
       return sub ? `/product/${sub}` : "/product";
     case "home":
     default:
@@ -119,8 +112,7 @@ const App: React.FC = () => {
       ? "home"
       : "home";
 
-  // load user + stripe success handler (kept from your old code)
-// load user + stripe success handler
+  // --- IMPROVED USER LOAD & STRIPE HANDLER ---
   useEffect(() => {
     const log = (...args: any[]) => console.log("[stripe-success]", ...args);
 
@@ -152,7 +144,6 @@ const App: React.FC = () => {
     };
 
     const updateCreditsInState = (newCredits: number) => {
-      // Always read fresh from LS to avoid overwriting other tab changes
       const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
       if (!current?.id) return;
 
@@ -204,8 +195,6 @@ const App: React.FC = () => {
           window.history.replaceState({}, "", window.location.pathname);
 
           if (latest > before) {
-             // Optional: Brief toast or alert
-             // alert("Payment successful! Credits updated.");
              console.log("Credits updated successfully");
           }
         } catch (e) {
@@ -215,7 +204,7 @@ const App: React.FC = () => {
       })();
     }
 
-    // Window focus handler (keep this as backup)
+    // Window focus handler
     const onFocus = async () => {
       const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
       if (current?.id) {
@@ -223,30 +212,6 @@ const App: React.FC = () => {
            const credits = await fetchMe(current.id);
            if (Number.isFinite(credits)) updateCreditsInState(credits);
         } catch(e) { console.error(e) }
-      }
-    };
-
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, []);
-    const onFocus = async () => {
-      try {
-        const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
-        if (!current?.id) return;
-        const res = await fetch(`${BACKEND_URL}/api/users/me`, {
-          headers: { "x-user-id": current.id },
-          cache: "no-store",
-        });
-        const data = await res.json().catch(() => ({}));
-        const creditsRaw = data?.credits ?? data?.user?.credits ?? data?.data?.credits;
-        const credits = Number(creditsRaw);
-        if (Number.isFinite(credits)) {
-          const updated = { ...current, credits };
-          setUser(updated);
-          localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updated));
-        }
-      } catch (e) {
-        console.warn("[stripe-success] focus refresh failed", e);
       }
     };
 
@@ -332,7 +297,6 @@ const App: React.FC = () => {
     setCurrentResume(null);
   
     // IMPORTANT: clear any in-editor loaded resume data by forcing a fresh editor instance
-    // simplest: navigate and hard refresh the route state (no full page reload needed)
     navigate("/editor", { replace: true });
   
     // optional: also clear any editor actions ref so the global chat isn't "resume connected"
