@@ -394,7 +394,9 @@ const App: React.FC = () => {
         newMsgs[index].proposal!.status = "accepted";
         return newMsgs;
       });
+  
       editorActionsRef.current?.updateResume(msg.proposal.data);
+      editorActionsRef.current?.clearPreview?.();
     }
   };
 
@@ -404,6 +406,8 @@ const App: React.FC = () => {
       if (newMsgs[index].proposal) newMsgs[index].proposal!.status = "declined";
       return newMsgs;
     });
+  
+    editorActionsRef.current?.clearPreview?.();
   };
 
   const handleCreateNew = () => {
