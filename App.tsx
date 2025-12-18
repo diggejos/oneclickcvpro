@@ -21,29 +21,24 @@ import {
   User,
   SavedResume,
   PageView,
-  LegalPageType,
-  ProductType,
   ChatMessage,
   ResumeData,
+  LegalPageType,
+  ProductType,
 } from "./types";
 
 const BACKEND_URL = (import.meta as any).env.VITE_BACKEND_URL || "";
 const STORAGE_KEY_USER = "oneclickcv_user";
 
-
 export interface EditorActions {
   getResume: () => ResumeData | null;
   updateResume: (data: ResumeData) => void;
   isTailored: () => boolean;
-
-  // NEW: proposal preview
   previewResume: (data: ResumeData) => void;
   clearPreview: () => void;
   isPreviewing: () => boolean;
 }
 
-
-// helpers: map “page view” to URL
 const toPath = (page: PageView, sub?: any) => {
   switch (page) {
     case "dashboard": return "/dashboard";
@@ -65,7 +60,7 @@ const App: React.FC = () => {
 
   const [subPage, setSubPage] = useState<any>(null);
 
-  // ✅ Lazy initialize user to prevent flicker
+  // Lazy init user
   const [user, setUser] = useState<User | null>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY_USER);
@@ -88,8 +83,6 @@ const App: React.FC = () => {
   const editorActionsRef = useRef<EditorActions | null>(null);
   const [editorSessionKey, setEditorSessionKey] = useState(0);
 
-
-  // Derive “view” from URL
   const path = location.pathname.replace(/\/+$/, "") || "/";
   const viewFromPath: PageView =
     path === "/dashboard" ? "dashboard"
@@ -102,19 +95,16 @@ const App: React.FC = () => {
       : path === "/blog" ? "blog"
       : "home";
 
-  // --- PAYMENT & USER LOAD LOGIC ---
+  // --- PAYMENT & LOAD LOGIC ---
   useEffect(() => {
-    if (user?.id) {
-      fetchResumesFromDB(user.id);
-    }
+    if (user?.id) fetchResumesFromDB(user.id);
 
-    // 2. Check URL for Payment Success
     const params = new URLSearchParams(window.location.search);
     const isSuccess = params.get("success") === "true";
     const sessionId = params.get("session_id");
 
     const fetchMe = async (userId: string) => {
-      if (!BACKEND_URL) throw new Error("VITE_BACKEND_URL is empty");
+      if (!BACKEND_URL) return;
       const res = await fetch(`${BACKEND_URL}/api/users/me?t=${Date.now()}`, {
         headers: { "x-user-id": userId },
         cache: "no-store",
@@ -124,7 +114,7 @@ const App: React.FC = () => {
     };
 
     const updateCreditsInState = (newCredits: number) => {
-      console.log("🔥 Updating local credits to:", newCredits);
+      console.log("⚡ Updating credits:", newCredits);
       setUser((currentUser) => {
         if (!currentUser) return null;
         const updated = { ...currentUser, credits: newCredits };
@@ -136,10 +126,9 @@ const App: React.FC = () => {
     const runVerification = async () => {
        if (!user?.id) return;
 
-       // A) FAST PATH: Verify specific session immediately
+       // A) Fast Path: Manual Verification
        if (sessionId) {
           try {
-             console.log("Verifying payment session:", sessionId);
              const res = await fetch(`${BACKEND_URL}/api/credits/verify-session?t=${Date.now()}`, {
                method: "POST",
                headers: { "Content-Type": "application/json", "x-user-id": user.id },
@@ -150,26 +139,27 @@ const App: React.FC = () => {
              if (data.success && typeof data.credits === 'number') {
                 updateCreditsInState(data.credits);
                 window.history.replaceState({}, "", window.location.pathname);
-                alert(`Payment Successful! You now have ${data.credits} credits.`);
+                alert(`Payment Successful! Balance: ${data.credits} credits.`);
                 return;
              }
           } catch(e) { console.error("Fast verify failed", e); }
        }
 
-       // B) SLOW PATH: Polling fallback
+       // B) Fallback: Aggressive Polling
        const before = Number(user.credits || 0);
        let latest = before;
-       for (let attempt = 0; attempt < 30; attempt++) {
+       // Poll more frequently: 400ms for 30 seconds
+       for (let attempt = 0; attempt < 75; attempt++) {
          try {
            const credits = await fetchMe(user.id);
            if (Number.isFinite(credits) && credits > before) {
               latest = credits;
               updateCreditsInState(latest);
-              alert(`Payment Successful! You now have ${latest} credits.`);
+              alert(`Payment Successful! Balance: ${latest} credits.`);
               break;
            }
-         } catch(e) { console.warn("Poll error", e); }
-         await new Promise((r) => setTimeout(r, 600));
+         } catch(e) {}
+         await new Promise((r) => setTimeout(r, 400));
        }
        window.history.replaceState({}, "", window.location.pathname);
     };
@@ -179,40 +169,33 @@ const App: React.FC = () => {
     }
 
     const onFocus = async () => {
-      const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
-      if (current?.id) {
+      if (user?.id) {
         try {
-           const credits = await fetchMe(current.id);
+           const credits = await fetchMe(user.id);
            if (Number.isFinite(credits)) updateCreditsInState(credits);
         } catch(e) {}
       }
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, []); // Only run on mount (and internal logic handles user updates)
+  }, []);
 
-  // SEO title
+  // SEO
   useEffect(() => {
     let title = "OneClickCVPro | Instant AI Resume Builder";
-    if (viewFromPath === "about") title = "About Us | OneClickCVPro";
+    if (viewFromPath === "dashboard") title = "My Dashboard | OneClickCVPro";
     else if (viewFromPath === "pricing") title = "Pricing | OneClickCVPro";
-    else if (viewFromPath === "dashboard") title = "My Dashboard | OneClickCVPro";
-    else if (viewFromPath === "editor") title = "Resume Editor | OneClickCVPro";
     document.title = title;
   }, [viewFromPath, subPage]);
 
+  // --- CRUD Operations ---
   const fetchResumesFromDB = async (userId: string) => {
     try {
       const res = await fetch(`${BACKEND_URL}/api/resumes`, {
         headers: { "x-user-id": userId },
       });
-      if (res.ok) {
-        const data = await res.json();
-        setSavedResumes(data);
-      }
-    } catch (e) {
-      console.error("Failed to load resumes", e);
-    }
+      if (res.ok) setSavedResumes(await res.json());
+    } catch (e) { console.error(e); }
   };
 
   const syncResumeToDB = async (resume: SavedResume, userId: string) => {
@@ -223,9 +206,7 @@ const App: React.FC = () => {
         body: JSON.stringify(resume),
       });
       fetchResumesFromDB(userId);
-    } catch (e) {
-      console.error("Failed to sync resume", e);
-    }
+    } catch (e) { console.error(e); }
   };
 
   const deleteResumeFromDB = async (resumeId: string, userId: string) => {
@@ -235,9 +216,7 @@ const App: React.FC = () => {
         headers: { "x-user-id": userId },
       });
       fetchResumesFromDB(userId);
-    } catch (e) {
-      console.error("Failed to delete", e);
-    }
+    } catch (e) { console.error(e); }
   };
 
   const updateUserState = (newUser: User) => {
@@ -249,7 +228,6 @@ const App: React.FC = () => {
     updateUserState(loggedInUser);
     fetchResumesFromDB(loggedInUser.id);
     setShowAuthModal(false);
-
     if (pendingResumeSave) {
       syncResumeToDB(pendingResumeSave, loggedInUser.id);
       setPendingResumeSave(null);
@@ -272,19 +250,10 @@ const App: React.FC = () => {
     navigate(toPath(page, sub));
   };
 
+  // --- Chat ---
   const handleChatSendMessage = async (text: string) => {
     setChatMessages((prev) => [...prev, { role: "user", text }]);
     setIsChatLoading(true);
-  
-    const withTimeout = async <T,>(p: Promise<T>, ms = 45000): Promise<T> => {
-      return await Promise.race([
-        p,
-        new Promise<T>((_, reject) =>
-          setTimeout(() => reject(new Error("Chat request timed out. Please try again.")), ms)
-        ),
-      ]);
-    };
-  
     try {
       const currentResumeData = editorActionsRef.current?.getResume() || null;
       const history = ([
@@ -292,68 +261,28 @@ const App: React.FC = () => {
         { role: "user", text },
       ] as any[]).map((m) => ({ role: m.role as "user" | "model", text: m.text }));
   
-      const result = await withTimeout(
-        unifiedChatAgent(history, text, currentResumeData),
-        45000
-      );
-  
+      const result = await unifiedChatAgent(history, text, currentResumeData);
       setChatMessages((prev) => [
         ...prev,
         {
           role: "assistant",
           text: result.text,
-          proposal: result.proposal
-            ? {
-                data: result.proposal.data,
-                description: result.proposal.description,
-                status: "pending",
-              }
-            : undefined,
+          proposal: result.proposal ? { ...result.proposal, status: "pending" } : undefined,
         },
       ]);
-  
-      if (result.proposal?.data) {
-        editorActionsRef.current?.previewResume?.(result.proposal.data);
-      }
+      if (result.proposal?.data) editorActionsRef.current?.previewResume?.(result.proposal.data);
     } catch (e: any) {
-      setChatMessages((prev) => [
-        ...prev,
-        { role: "assistant", text: e?.message || "Service unavailable." },
-      ]);
+      setChatMessages((prev) => [...prev, { role: "assistant", text: "Service unavailable." }]);
     } finally {
       setIsChatLoading(false);
     }
   };
 
-  const spendCredit = async (reason: string) => {
-    if (!user) throw Object.assign(new Error("Not logged in"), { status: 401 });
-
-    const res = await fetch(`${BACKEND_URL}/api/credits/spend`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-user-id": user.id },
-      body: JSON.stringify({ reason }),
-    });
-
-    const data = await res.json().catch(() => null);
-
-    if (!res.ok) {
-      const err = new Error(data?.error || "Credit spend failed");
-      (err as any).status = res.status;
-      throw err;
-    }
-
-    const updatedUser = { ...user, credits: data.credits };
-    updateUserState(updatedUser);
-    return data.credits;
-  };
-
   const handleChatAcceptProposal = (index: number) => {
     const msg = chatMessages[index];
-    if (msg.proposal && msg.proposal.status === "pending") {
+    if (msg.proposal) {
       setChatMessages((prev) => {
-        const newMsgs = [...prev];
-        newMsgs[index].proposal!.status = "accepted";
-        return newMsgs;
+        const n = [...prev]; n[index].proposal!.status = "accepted"; return n;
       });
       editorActionsRef.current?.updateResume(msg.proposal.data);
       editorActionsRef.current?.clearPreview?.();
@@ -362,57 +291,39 @@ const App: React.FC = () => {
 
   const handleChatDeclineProposal = (index: number) => {
     setChatMessages((prev) => {
-      const newMsgs = [...prev];
-      if (newMsgs[index].proposal) newMsgs[index].proposal!.status = "declined";
-      return newMsgs;
+      const n = [...prev]; if (n[index].proposal) n[index].proposal!.status = "declined"; return n;
     });
     editorActionsRef.current?.clearPreview?.();
   };
 
-  const handleCreateNew = () => {
-    setCurrentResume(null);
-    navigate("/editor");
-  };
-
-  const handleOpenResume = (resume: SavedResume) => {
-    setCurrentResume(resume);
-    navigate("/editor");
-  };
-
-  const handleDeleteResume = (id: string) => {
-    if (window.confirm("Delete this resume?")) {
-      if (user) deleteResumeFromDB(id, user.id);
-      else setSavedResumes((prev) => prev.filter((r) => r.id !== id));
-    }
-  };
-
-  const handleSaveResume = (resume: SavedResume) => {
-    if (!user) {
-      setPendingResumeSave(resume);
-      setShowAuthModal(true);
-      return;
-    }
-
-    syncResumeToDB(resume, user.id);
-
-    setSavedResumes((prev) => {
-      const idx = prev.findIndex((r) => r.id === resume.id);
-      if (idx >= 0) {
-        const updated = [...prev];
-        updated[idx] = resume;
-        return updated;
-      }
-      return [...prev, resume];
+  const spendCredit = async (reason: string) => {
+    if (!user) throw Object.assign(new Error("Not logged in"), { status: 401 });
+    const res = await fetch(`${BACKEND_URL}/api/credits/spend`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-user-id": user.id },
+      body: JSON.stringify({ reason }),
     });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error);
+    updateUserState({ ...user, credits: data.credits });
+    return data.credits;
+  };
 
-    setCurrentResume(resume);
+  // --- Handlers ---
+  const handleCreateNew = () => { setCurrentResume(null); navigate("/editor"); };
+  const handleOpenResume = (r: SavedResume) => { setCurrentResume(r); navigate("/editor"); };
+  const handleDeleteResume = (id: string) => {
+    if (window.confirm("Delete?")) user ? deleteResumeFromDB(id, user.id) : setSavedResumes(p => p.filter(x => x.id !== id));
+  };
+  const handleSaveResume = (r: SavedResume) => {
+    if (!user) { setPendingResumeSave(r); setShowAuthModal(true); return; }
+    syncResumeToDB(r, user.id);
+    setSavedResumes(p => { const i = p.findIndex(x => x.id === r.id); if (i >= 0) p[i] = r; else p.push(r); return [...p]; });
+    setCurrentResume(r);
   };
 
   const handleCreditsPurchased = (newCredits: number) => {
-    if (user) {
-      const updatedUser = { ...user, credits: newCredits };
-      updateUserState(updatedUser);
-    }
+    if (user) updateUserState({ ...user, credits: newCredits });
     setShowPricingModal(false);
   };
 
@@ -424,59 +335,35 @@ const App: React.FC = () => {
 
   return (
     <>
-      {/* ✅ NO MORE BLINKING: key removed, passing credits directly */}
       <TopNav
         user={user}
-        credits={user?.credits} 
+        credits={user?.credits}
         onAddCredits={() => setShowPricingModal(true)}
         onLogout={handleLogout}
         onLogin={() => setShowAuthModal(true)}
         onNavigate={handleNavigate}
         onBack={path === "/editor" && user ? () => navigate("/dashboard") : undefined}
       />
-
       <Routes>
         <Route path="/verified" element={<VerifiedPage />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
-
         <Route path="/" element={<Navigate to="/editor" replace />} />
-        <Route
-            path="/editor"
-            element={
-              <Editor
-                key={`${editorSessionKey}-${user?.id ?? "guest"}`} 
-                initialResume={currentResume}
-                onSave={handleSaveResume}
-                onBack={() => {
-                  if (user) navigate("/dashboard");
-                  else setShowAuthModal(true);
-                }}
-                isGuest={!user}
-                onRequireAuth={() => setShowAuthModal(true)}
-                currentUser={user}
-                onAddCredits={() => setShowPricingModal(true)}
-                onNavigate={handleNavigate}
-                onRegisterActions={(actions) => (editorActionsRef.current = actions)}
-                onSpendCredit={spendCredit}
-              />
-            }
+        <Route path="/editor" element={
+          <Editor
+            key={`${editorSessionKey}-${user?.id ?? "guest"}`}
+            initialResume={currentResume}
+            onSave={handleSaveResume}
+            onBack={() => user ? navigate("/dashboard") : setShowAuthModal(true)}
+            isGuest={!user}
+            onRequireAuth={() => setShowAuthModal(true)}
+            currentUser={user}
+            onAddCredits={() => setShowPricingModal(true)}
+            onNavigate={handleNavigate}
+            onRegisterActions={(a) => (editorActionsRef.current = a)}
+            onSpendCredit={spendCredit}
           />
-
-        <Route path="/dashboard" element={
-          <RequireUser>
-            <Dashboard
-              user={user!}
-              resumes={savedResumes}
-              onCreate={handleCreateNew}
-              onOpen={handleOpenResume}
-              onDelete={handleDeleteResume}
-              onLogout={handleLogout}
-              onAddCredits={() => setShowPricingModal(true)}
-              onNavigate={handleNavigate}
-            />
-          </RequireUser>
         } />
-
+        <Route path="/dashboard" element={<RequireUser><Dashboard user={user!} resumes={savedResumes} onCreate={handleCreateNew} onOpen={handleOpenResume} onDelete={handleDeleteResume} onLogout={handleLogout} onAddCredits={() => setShowPricingModal(true)} onNavigate={handleNavigate} /></RequireUser>} />
         <Route path="/about" element={<AboutPage onBack={() => navigate(user ? "/dashboard" : "/editor")} />} />
         <Route path="/contact" element={<ContactPage onBack={() => navigate(user ? "/dashboard" : "/editor")} />} />
         <Route path="/pricing" element={<PricingPage onBack={() => navigate(user ? "/dashboard" : "/editor")} onGetStarted={() => navigate("/editor")} />} />
@@ -485,30 +372,9 @@ const App: React.FC = () => {
         <Route path="/product/:type" element={<ProductPage type={subPage as ProductType} onBack={() => navigate(user ? "/dashboard" : "/editor")} onStart={() => navigate("/editor")} />} />
         <Route path="*" element={<Navigate to="/editor" replace />} />
       </Routes>
-
-      <GlobalChatAssistant
-        messages={chatMessages}
-        isOpen={isChatOpen}
-        setIsOpen={setIsChatOpen}
-        isLoading={isChatLoading}
-        onSendMessage={handleChatSendMessage}
-        onAcceptProposal={handleChatAcceptProposal}
-        onDeclineProposal={handleChatDeclineProposal}
-        hasActiveResume={path === "/editor" && !!editorActionsRef.current}
-      />
-
-      {showAuthModal && (
-        <AuthPage onLogin={handleLogin} isModal={true} onClose={() => setShowAuthModal(false)} />
-      )}
-
-      {showPricingModal && user && (
-        <PricingModal
-          onClose={() => setShowPricingModal(false)}
-          currentCredits={user.credits}
-          onPurchase={handleCreditsPurchased}
-          userId={user.id}
-        />
-      )}
+      <GlobalChatAssistant messages={chatMessages} isOpen={isChatOpen} setIsOpen={setIsChatOpen} isLoading={isChatLoading} onSendMessage={handleChatSendMessage} onAcceptProposal={handleChatAcceptProposal} onDeclineProposal={handleChatDeclineProposal} hasActiveResume={path === "/editor" && !!editorActionsRef.current} />
+      {showAuthModal && <AuthPage onLogin={handleLogin} isModal={true} onClose={() => setShowAuthModal(false)} />}
+      {showPricingModal && user && <PricingModal onClose={() => setShowPricingModal(false)} currentCredits={user.credits} onPurchase={handleCreditsPurchased} userId={user.id} />}
     </>
   );
 };
