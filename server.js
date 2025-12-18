@@ -6,6 +6,9 @@ import bodyParser from 'body-parser';
 import nodemailer from 'nodemailer';
 import { OAuth2Client } from 'google-auth-library';
 import Stripe from 'stripe';
+// --- Signup Route (Email + Password) ---
+import bcrypt from "bcryptjs";
+import crypto from "crypto";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -285,85 +288,6 @@ app.delete('/api/resumes/:id', async (req, res) => {
   }
 });
 
-
-
-// --- Signup Route (Email + Password) ---
-import bcrypt from "bcryptjs";
-import crypto from "crypto";
-
-app.post('/api/auth/register', async (req, res) => {
-  try {
-    const { email, password, name } = req.body;
-    const normalizedEmail = String(email || "").trim().toLowerCase();
-
-
-    const existing = await User.findOne({ normalizedEmail });
-    if (existing) {
-      return res.status(400).json({ error: "Email already used" });
-    }
-
-    // ✅ PASSWORD RULES (server-side)
-    // min 8 chars, at least 1 number, at least 1 uppercase letter
-    const passwordPattern = /^(?=.*\d)(?=.*[A-Z]).{8,}$/;
-    if (!passwordPattern.test(password || "")) {
-      return res.status(400).json({
-        error: "Password must be at least 8 characters and include 1 number and 1 uppercase letter."
-      });
-    }
-
-    const passwordHash = await bcrypt.hash(password, 12);
-    const verificationToken = crypto.randomBytes(32).toString("hex");
-
-    await User.create({
-      normalizedEmail,
-      passwordHash,
-      name,
-      verificationToken,
-      isVerified: false
-    });
-
-    // ... bleibt unverändert
-
-    const verificationToken = crypto.randomBytes(32).toString("hex");
-
-    await User.create({
-      normalizedEmail,
-      passwordHash,
-      name,
-      verificationToken,
-      isVerified: false
-    });
-
-    // --- BUILD VERIFICATION URL (NO /index.html EVER) ---
-    const baseBackendUrl = (process.env.BACKEND_URL || "https://oneclickcvpro-backend.onrender.com")
-      .replace(/\/+$/g, "");
-    
-    const verifyURL = `${baseBackendUrl}/api/auth/verify?token=${verificationToken}`;
-
-
-    console.log("VERIFY URL SENT:", verifyURL);
-
-    // --- SEND EMAIL ---
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: "Verify your OneClickCV Pro account",
-      html: `
-        <h2>Verify your account</h2>
-        <p>Click the link below to activate your account:</p>
-        <a href="${verifyURL}" target="_blank" rel="noopener noreferrer">
-          Verify Account
-        </a>
-      `
-    });
-
-    return res.json({ message: "Verification email sent" });
-
-  } catch (err) {
-    console.error("REGISTER ERROR:", err);
-    return res.status(500).json({ error: "Registration failed" });
-  }
-});
 // --- VERIFICATION ROUTE ---
 app.get('/api/auth/verify', async (req, res) => {
   try {
@@ -392,13 +316,69 @@ app.get('/api/auth/verify', async (req, res) => {
     return res.status(500).send("Server error.");
   }
 });
+app.post("/api/auth/register", async (req, res) => {
+  try {
+    const { email, password, name } = req.body;
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+
+    const existing = await User.findOne({ email: normalizedEmail });
+    if (existing) {
+      return res.status(400).json({ error: "Email already used" });
+    }
+
+    // ✅ PASSWORD RULES (server-side)
+    // min 8 chars, at least 1 number, at least 1 uppercase letter
+    const passwordPattern = /^(?=.*\d)(?=.*[A-Z]).{8,}$/;
+    if (!passwordPattern.test(password || "")) {
+      return res.status(400).json({
+        error:
+          "Password must be at least 8 characters and include 1 number and 1 uppercase letter.",
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    const verificationToken = crypto.randomBytes(32).toString("hex");
+
+    await User.create({
+      email: normalizedEmail,
+      passwordHash,
+      name,
+      verificationToken,
+      isVerified: false,
+    });
+
+    const baseBackendUrl = (
+      process.env.BACKEND_URL || "https://oneclickcvpro-backend.onrender.com"
+    ).replace(/\/+$/g, "");
+
+    const verifyURL = `${baseBackendUrl}/api/auth/verify?token=${verificationToken}`;
+
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: normalizedEmail,
+      subject: "Verify your OneClickCV Pro account",
+      html: `
+        <h2>Verify your account</h2>
+        <p>Click the link below to activate your account:</p>
+        <a href="${verifyURL}" target="_blank" rel="noopener noreferrer">Verify Account</a>
+      `,
+    });
+
+    return res.json({ message: "Verification email sent" });
+  } catch (err) {
+    console.error("REGISTER ERROR:", err);
+    return res.status(500).json({ error: "Registration failed" });
+  }
+});
 
 
 // --- EMAIL LOGIN ROUTE ---
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  
+  const user = await User.findOne({ email: normalizedEmail });
 
-  const user = await User.findOne({ email });
   if (!user) return res.status(400).json({ error: "No user with that email" });
   if (!user.isVerified) return res.status(401).json({ error: "Email not verified" });
 
