@@ -37,7 +37,13 @@ export interface EditorActions {
   getResume: () => ResumeData | null;
   updateResume: (data: ResumeData) => void;
   isTailored: () => boolean;
+
+  // NEW: proposal preview
+  previewResume: (data: ResumeData) => void;
+  clearPreview: () => void;
+  isPreviewing: () => boolean;
 }
+
 
 // helpers: map “page view” to URL
 const toPath = (page: PageView, sub?: any) => {
