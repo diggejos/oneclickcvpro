@@ -6,12 +6,12 @@ import bodyParser from 'body-parser';
 import nodemailer from 'nodemailer';
 import { OAuth2Client } from 'google-auth-library';
 import Stripe from 'stripe';
-// --- Signup Route (Email + Password) ---
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
+// Helper to ensure ObjectId
 const toObjectId = (id) => {
   try {
     return new mongoose.Types.ObjectId(id);
@@ -68,6 +68,7 @@ const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "1040938691698-o9k428s47iskgq1vs6rk1dnc1857tnir.apps.googleusercontent.com";
 
 
+// --- USER ENDPOINT ---
 app.get("/api/users/me", async (req, res) => {
   try {
     const userIdRaw = req.headers["x-user-id"];
@@ -113,6 +114,7 @@ const userSchema = new mongoose.Schema({
   name: String,
   avatar: String,
   credits: { type: Number, default: 1 },
+  // Track processed sessions to prevent double-crediting
   processedSessions: { type: [String], default: [] },
   createdAt: { type: Date, default: Date.now }
 });
@@ -412,30 +414,47 @@ app.post('/api/credits/verify-session', async (req, res) => {
   const { sessionId } = req.body;
   const userIdRaw = req.headers['x-user-id'];
   
-  if (!userIdRaw) return res.status(401).json({error: "Unauthorized"});
+  // ✅ 1. Safe ID Casting
+  const userId = toObjectId(userIdRaw);
+  if (!userId) return res.status(401).json({error: "Unauthorized"});
 
   try {
+    console.log(`[Verify] Checking session ${sessionId} for user ${userId}`);
     const session = await stripe.checkout.sessions.retrieve(sessionId);
     
-    if (session.payment_status === 'paid') {
+    // ✅ 2. Handle both 'paid' and 'complete' (Stripe terminology can vary)
+    if (session.payment_status === 'paid' || session.status === 'complete') {
        const amount = parseInt(session.metadata.creditAmount || '0');
        
        if (amount > 0) {
-         // ✅ ATOMIC UPDATE: Only update if session ID is NOT in the list
-         await User.findOneAndUpdate(
-            { _id: userIdRaw, processedSessions: { $ne: sessionId } }, 
+         // ✅ 3. ATOMIC UPDATE
+         // Try to find user with this ID *AND* where this session hasn't been processed
+         const result = await User.findOneAndUpdate(
+            { _id: userId, processedSessions: { $ne: sessionId } }, 
             { 
                $inc: { credits: amount },
                $push: { processedSessions: sessionId }
-            }
+            },
+            { new: true } // Return updated doc if it worked
          );
+         
+         if (result) {
+            console.log(`✅ [Verify] Manually added ${amount} credits.`);
+         } else {
+            console.log(`ℹ️ [Verify] Session already processed (webhook was faster).`);
+         }
        }
 
-       // ✅ Return FRESH credits immediately
-       const freshUser = await User.findById(userIdRaw).select("credits").lean();
+       // ✅ 4. ALWAYS return the fresh credit count from the DB
+       // (Whether we updated it just now, or the webhook did earlier)
+       const freshUser = await User.findById(userId).select("credits").lean();
+       console.log(`[Verify] Returning credits: ${freshUser?.credits}`);
+       
        return res.json({ success: true, credits: freshUser?.credits || 0 });
+
     } else {
-       return res.json({ success: false, message: "Payment pending" });
+       console.log(`[Verify] Session ${sessionId} status: ${session.payment_status}`);
+       return res.json({ success: false, message: "Payment pending or incomplete" });
     }
   } catch(e) {
     console.error("Manual verify error:", e.message);
@@ -457,8 +476,11 @@ app.post('/webhook', bodyParser.raw({ type: 'application/json' }), async (reques
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
-    const userId = session.metadata.userId;
+    const userIdRaw = session.metadata.userId;
     const creditAmount = parseInt(session.metadata.creditAmount || '0');
+
+    // ✅ Safe ID Casting
+    const userId = toObjectId(userIdRaw);
 
     if (userId && creditAmount > 0) {
       try {
@@ -469,13 +491,12 @@ app.post('/webhook', bodyParser.raw({ type: 'application/json' }), async (reques
                $inc: { credits: creditAmount },
                $push: { processedSessions: session.id }
             },
-            { new: true } // Return the updated document
+            { new: true }
          );
 
          if (updatedUser) {
             console.log(`✅ [Webhook] Atomic add: ${creditAmount} credits to ${userId}`);
-            
-            // Email (optional, async)
+            // Optional: Email
             const mailOptions = {
               from: process.env.EMAIL_USER || 'noreply@oneclickcv.com',
               to: updatedUser.email,
