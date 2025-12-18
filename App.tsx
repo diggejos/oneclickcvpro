@@ -35,36 +35,23 @@ export interface EditorActions {
   getResume: () => ResumeData | null;
   updateResume: (data: ResumeData) => void;
   isTailored: () => boolean;
-
-  // NEW: proposal preview
   previewResume: (data: ResumeData) => void;
   clearPreview: () => void;
   isPreviewing: () => boolean;
 }
 
-
-// helpers: map “page view” to URL
 const toPath = (page: PageView, sub?: any) => {
   switch (page) {
-    case "dashboard":
-      return "/dashboard";
-    case "editor":
-      return "/editor";
-    case "about":
-      return "/about";
-    case "contact":
-      return "/contact";
-    case "pricing":
-      return "/pricing";
-    case "blog":
-      return "/blog";
-    case "legal":
-      return sub ? `/legal/${sub}` : "/legal";
-    case "product":
-      return sub ? `/product/${sub}` : "/product";
+    case "dashboard": return "/dashboard";
+    case "editor": return "/editor";
+    case "about": return "/about";
+    case "contact": return "/contact";
+    case "pricing": return "/pricing";
+    case "blog": return "/blog";
+    case "legal": return sub ? `/legal/${sub}` : "/legal";
+    case "product": return sub ? `/product/${sub}` : "/product";
     case "home":
-    default:
-      return "/";
+    default: return "/";
   }
 };
 
@@ -72,7 +59,6 @@ const App: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // OLD STATE (kept)
   const [subPage, setSubPage] = useState<any>(null);
   const [user, setUser] = useState<User | null>(null);
   const [savedResumes, setSavedResumes] = useState<SavedResume[]>([]);
@@ -88,140 +74,126 @@ const App: React.FC = () => {
   const editorActionsRef = useRef<EditorActions | null>(null);
   const [editorSessionKey, setEditorSessionKey] = useState(0);
 
-
-  // Derive “view” from URL (instead of state)
   const path = location.pathname.replace(/\/+$/, "") || "/";
   const viewFromPath: PageView =
-    path === "/dashboard"
-      ? "dashboard"
-      : path === "/editor"
-      ? "editor"
-      : path === "/about"
-      ? "about"
-      : path === "/contact"
-      ? "contact"
-      : path === "/pricing"
-      ? "pricing"
-      : path.startsWith("/legal")
-      ? "legal"
-      : path.startsWith("/product")
-      ? "product"
-      : path === "/blog"
-      ? "blog"
-      : path === "/"
-      ? "home"
+    path === "/dashboard" ? "dashboard"
+      : path === "/editor" ? "editor"
+      : path === "/about" ? "about"
+      : path === "/contact" ? "contact"
+      : path === "/pricing" ? "pricing"
+      : path.startsWith("/legal") ? "legal"
+      : path.startsWith("/product") ? "product"
+      : path === "/blog" ? "blog"
       : "home";
 
-  // --- IMPROVED USER LOAD & STRIPE HANDLER ---
+  // --- IMMEDIATE PAYMENT VERIFICATION ---
   useEffect(() => {
-    const log = (...args: any[]) => console.log("[stripe-success]", ...args);
-
+    // 1. Load initial user
     const storedUser = localStorage.getItem(STORAGE_KEY_USER);
+    let currentUserData = null;
     if (storedUser) {
-      const parsedUser = JSON.parse(storedUser);
-      setUser(parsedUser);
-      fetchResumesFromDB(parsedUser.id);
+      currentUserData = JSON.parse(storedUser);
+      setUser(currentUserData);
+      fetchResumesFromDB(currentUserData.id);
     }
 
+    // 2. Check URL for payment success
     const params = new URLSearchParams(window.location.search);
     const isSuccess = params.get("success") === "true";
-
-    // Helper: Force fresh fetch with timestamp to avoid caching
-    const fetchMe = async (userId: string) => {
-      if (!BACKEND_URL) throw new Error("VITE_BACKEND_URL is empty");
-
-      // ADDED: ?t=${Date.now()} to prevent browser caching
-      const res = await fetch(`${BACKEND_URL}/api/users/me?t=${Date.now()}`, {
-        headers: { "x-user-id": userId },
-        cache: "no-store",
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Failed to fetch /api/users/me");
-
-      const creditsRaw = data?.credits ?? data?.user?.credits ?? data?.data?.credits;
-      return Number(creditsRaw);
-    };
+    const sessionId = params.get("session_id"); // ✅ Now available from backend
 
     const updateCreditsInState = (newCredits: number) => {
       const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
       if (!current?.id) return;
 
       const updated = { ...current, credits: newCredits };
-      
-      // 1. Update React State (Triggers Navbar re-render)
       setUser(updated);
-      
-      // 2. Persist to storage
       localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updated));
     };
 
-    if (isSuccess) {
-      (async () => {
-        try {
-          const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
-          
-          if (!current?.id) {
-            window.history.replaceState({}, "", window.location.pathname);
-            return;
-          }
+    const runVerification = async () => {
+       if (!currentUserData?.id || !BACKEND_URL) return;
 
-          const before = Number(current.credits || 0);
-          let latest = before;
-
-          // Poll aggressively: 40 attempts x 500ms = 20 seconds
-          for (let attempt = 0; attempt < 40; attempt++) {
-            try {
-              const credits = await fetchMe(current.id);
-              log("polling credits...", { attempt, credits, before });
-
-              if (Number.isFinite(credits)) {
-                latest = credits;
-                
-                // If credits increased, update and stop polling
-                if (latest > before) {
-                   updateCreditsInState(latest);
-                   // ✅ Notify user immediately about the success
-                   alert("Payment Successful! Your credits have been updated.");
-                   break;
-                }
-              }
-            } catch (e) {
-              console.warn("poll error", e);
+       // A) FAST PATH: If we have a session_id, ask server to verify immediately
+       if (sessionId) {
+         try {
+            console.log("Verifying payment session:", sessionId);
+            const res = await fetch(`${BACKEND_URL}/api/credits/verify-session`, {
+               method: "POST",
+               headers: {
+                 "Content-Type": "application/json",
+                 "x-user-id": currentUserData.id
+               },
+               body: JSON.stringify({ sessionId })
+            });
+            
+            const data = await res.json();
+            if (data.success && typeof data.credits === 'number') {
+               updateCreditsInState(data.credits);
+               alert("Payment Successful! Your credits have been updated.");
+               
+               // Cleanup URL
+               window.history.replaceState({}, "", window.location.pathname);
+               return; // Done, no need to poll
             }
-            // Wait 500ms (faster check)
-            await new Promise((r) => setTimeout(r, 500));
-          }
+         } catch (e) {
+            console.error("Verification failed, falling back to polling", e);
+         }
+       }
 
-          // Clean URL
-          window.history.replaceState({}, "", window.location.pathname);
+       // B) SLOW PATH (Fallback): Poll if no session_id or verify failed
+       // (Only runs if A didn't return)
+       const before = Number(currentUserData.credits || 0);
+       let latest = before;
 
-          if (latest > before) {
-             console.log("Credits updated successfully");
-          }
-        } catch (e) {
-          console.error("[stripe-success] fatal", e);
-          window.history.replaceState({}, "", window.location.pathname);
-        }
-      })();
-    }
-
-    // Window focus handler
-    const onFocus = async () => {
-      const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
-      if (current?.id) {
-        try {
-           const credits = await fetchMe(current.id);
-           if (Number.isFinite(credits)) updateCreditsInState(credits);
-        } catch(e) { console.error(e) }
-      }
+       for (let attempt = 0; attempt < 40; attempt++) {
+          try {
+             // force no-cache
+             const res = await fetch(`${BACKEND_URL}/api/users/me?t=${Date.now()}`, {
+               headers: { "x-user-id": currentUserData.id },
+               cache: "no-store",
+             });
+             const data = await res.json();
+             const credits = Number(data?.credits ?? data?.user?.credits);
+             
+             if (Number.isFinite(credits)) {
+               latest = credits;
+               if (latest > before) {
+                 updateCreditsInState(latest);
+                 alert("Payment Successful! Your credits have been updated.");
+                 break;
+               }
+             }
+          } catch (e) { console.warn("poll error", e); }
+          
+          await new Promise((r) => setTimeout(r, 500));
+       }
+       
+       window.history.replaceState({}, "", window.location.pathname);
     };
 
+    if (isSuccess && currentUserData) {
+       runVerification();
+    }
+
+    // Window focus refresher (just in case)
+    const onFocus = async () => {
+       const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
+       if (current?.id) {
+         try {
+            const res = await fetch(`${BACKEND_URL}/api/users/me?t=${Date.now()}`, {
+               headers: { "x-user-id": current.id }
+            });
+            const data = await res.json();
+            if (data.credits !== undefined) updateCreditsInState(data.credits);
+         } catch(e) {}
+       }
+    };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
+
   }, []);
 
-  // SEO title (kept, now driven by URL)
   useEffect(() => {
     let title = "OneClickCVPro | Instant AI Resume Builder";
     if (viewFromPath === "about") title = "About Us | OneClickCVPro";
@@ -293,20 +265,12 @@ const App: React.FC = () => {
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem(STORAGE_KEY_USER);
-  
-    // clear dashboard/editor-related state
     setSavedResumes([]);
     setCurrentResume(null);
-  
-    // IMPORTANT: clear any in-editor loaded resume data by forcing a fresh editor instance
     navigate("/editor", { replace: true });
-  
-    // optional: also clear any editor actions ref so the global chat isn't "resume connected"
     editorActionsRef.current = null;
   };
 
-
-  // IMPORTANT: old "handleNavigate" now changes URL
   const handleNavigate = (page: PageView, sub?: any) => {
     setSubPage(sub || null);
     navigate(toPath(page, sub));
@@ -327,8 +291,6 @@ const App: React.FC = () => {
   
     try {
       const currentResumeData = editorActionsRef.current?.getResume() || null;
-  
-      // IMPORTANT: build history from latest state (avoid stale closure)
       const history = ([
         ...chatMessages,
         { role: "user", text },
@@ -354,7 +316,6 @@ const App: React.FC = () => {
         },
       ]);
   
-      // OPTIONAL: if a proposal arrives, auto-preview it (see section 2)
       if (result.proposal?.data) {
         editorActionsRef.current?.previewResume?.(result.proposal.data);
       }
@@ -367,7 +328,6 @@ const App: React.FC = () => {
       setIsChatLoading(false);
     }
   };
-
 
   const spendCredit = async (reason: string) => {
     if (!user) throw Object.assign(new Error("Not logged in"), { status: 401 });
@@ -399,7 +359,6 @@ const App: React.FC = () => {
         newMsgs[index].proposal!.status = "accepted";
         return newMsgs;
       });
-  
       editorActionsRef.current?.updateResume(msg.proposal.data);
       editorActionsRef.current?.clearPreview?.();
     }
@@ -411,7 +370,6 @@ const App: React.FC = () => {
       if (newMsgs[index].proposal) newMsgs[index].proposal!.status = "declined";
       return newMsgs;
     });
-  
     editorActionsRef.current?.clearPreview?.();
   };
 
@@ -454,18 +412,6 @@ const App: React.FC = () => {
     setCurrentResume(resume);
   };
 
-  const handleAddCredits = () => {
-    if (!user) return;
-    setShowPricingModal(false);
-  };
-
-  // ROUTE GUARDS
-  const RequireUser: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    if (user) return <>{children}</>;
-    // open login modal and send to editor
-    if (!showAuthModal) setShowAuthModal(true);
-    return <Navigate to="/editor" replace />;
-  };
   const handleCreditsPurchased = (newCredits: number) => {
     if (user) {
       const updatedUser = { ...user, credits: newCredits };
@@ -473,6 +419,13 @@ const App: React.FC = () => {
     }
     setShowPricingModal(false);
   };
+
+  const RequireUser: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    if (user) return <>{children}</>;
+    if (!showAuthModal) setShowAuthModal(true);
+    return <Navigate to="/editor" replace />;
+  };
+
   return (
     <>
       <TopNav
@@ -485,17 +438,15 @@ const App: React.FC = () => {
       />
 
       <Routes>
-        {/* special verify routes */}
         <Route path="/verified" element={<VerifiedPage />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
 
-        {/* public pages */}
         <Route path="/" element={<Navigate to="/editor" replace />} />
         <Route
             path="/editor"
             element={
               <Editor
-                key={`${editorSessionKey}-${user?.id ?? "guest"}`} // ✅ forces full reset on logout/login
+                key={`${editorSessionKey}-${user?.id ?? "guest"}`} 
                 initialResume={currentResume}
                 onSave={handleSaveResume}
                 onBack={() => {
@@ -532,12 +483,8 @@ const App: React.FC = () => {
         <Route path="/contact" element={<ContactPage onBack={() => navigate(user ? "/dashboard" : "/editor")} />} />
         <Route path="/pricing" element={<PricingPage onBack={() => navigate(user ? "/dashboard" : "/editor")} onGetStarted={() => navigate("/editor")} />} />
         <Route path="/blog" element={<BlogPage onBack={() => navigate(user ? "/dashboard" : "/editor")} initialPostId={subPage} />} />
-
-        {/* dynamic-ish pages (simple) */}
         <Route path="/legal/:type" element={<LegalPage type={subPage as LegalPageType} onBack={() => navigate(user ? "/dashboard" : "/editor")} />} />
         <Route path="/product/:type" element={<ProductPage type={subPage as ProductType} onBack={() => navigate(user ? "/dashboard" : "/editor")} onStart={() => navigate("/editor")} />} />
-
-        {/* fallback */}
         <Route path="*" element={<Navigate to="/editor" replace />} />
       </Routes>
 
