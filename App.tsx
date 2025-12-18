@@ -39,6 +39,7 @@ export interface EditorActions {
   isPreviewing: () => boolean;
 }
 
+// Helper to calculate paths
 const toPath = (page: PageView, sub?: any) => {
   switch (page) {
     case "dashboard": return "/dashboard";
@@ -59,6 +60,19 @@ const App: React.FC = () => {
   const navigate = useNavigate();
 
   const [subPage, setSubPage] = useState<any>(null);
+
+  // 1. Define these variables EARLY so they are available everywhere
+  const path = location.pathname.replace(/\/+$/, "") || "/";
+  const viewFromPath: PageView =
+    path === "/dashboard" ? "dashboard"
+      : path === "/editor" ? "editor"
+      : path === "/about" ? "about"
+      : path === "/contact" ? "contact"
+      : path === "/pricing" ? "pricing"
+      : path.startsWith("/legal") ? "legal"
+      : path.startsWith("/product") ? "product"
+      : path === "/blog" ? "blog"
+      : "home";
 
   // Lazy init user
   const [user, setUser] = useState<User | null>(() => {
@@ -95,7 +109,6 @@ const App: React.FC = () => {
   };
 
   const updateCreditsInState = (newCredits: number) => {
-    // Only update if different to prevent re-renders
     setUser((currentUser) => {
       if (!currentUser || currentUser.credits === newCredits) return currentUser;
       
@@ -143,27 +156,22 @@ const App: React.FC = () => {
     if (isSuccess && user) {
        runVerification();
     }
-  }, []); // Run once on mount
+  }, []); 
 
-  // --- ✅ NEW: BACKGROUND HEARTBEAT (The Fix) ---
-  // Checks for credit updates every 4 seconds automatically
+  // --- BACKGROUND HEARTBEAT ---
   useEffect(() => {
     if (!user?.id) return;
-
     const interval = setInterval(async () => {
       try {
         const credits = await fetchMe(user.id);
-        if (Number.isFinite(credits)) {
-          updateCreditsInState(credits);
-        }
-      } catch (e) { /* ignore silent background error */ }
-    }, 4000); // Check every 4 seconds
-
+        if (Number.isFinite(credits)) updateCreditsInState(credits);
+      } catch (e) { /* silent */ }
+    }, 4000); 
     return () => clearInterval(interval);
   }, [user?.id]);
 
 
-  // SEO
+  // SEO Title (Using viewFromPath)
   useEffect(() => {
     let title = "OneClickCVPro | Instant AI Resume Builder";
     if (viewFromPath === "dashboard") title = "My Dashboard | OneClickCVPro";
