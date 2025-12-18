@@ -114,7 +114,6 @@ const userSchema = new mongoose.Schema({
   name: String,
   avatar: String,
   credits: { type: Number, default: 1 },
-  // ✅ NEW: Track processed sessions to prevent double-crediting
   processedSessions: { type: [String], default: [] },
   createdAt: { type: Date, default: Date.now }
 });
@@ -396,7 +395,6 @@ app.post('/create-checkout-session', async (req, res) => {
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
       mode: 'payment',
-      // ✅ CHANGE: Append session_id for immediate verification on return
       success_url: `${CLIENT_URL}/editor?success=true&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${CLIENT_URL}/editor?canceled=true&t=${Date.now()}`,
       metadata: {
@@ -412,7 +410,7 @@ app.post('/create-checkout-session', async (req, res) => {
   }
 });
 
-// --- ✅ NEW: MANUAL VERIFICATION ENDPOINT (Instant Refresh) ---
+// --- MANUAL VERIFICATION ENDPOINT (Instant Refresh) ---
 app.post('/api/credits/verify-session', async (req, res) => {
   const { sessionId } = req.body;
   const userIdRaw = req.headers['x-user-id'];
@@ -420,15 +418,12 @@ app.post('/api/credits/verify-session', async (req, res) => {
   if (!userIdRaw) return res.status(401).json({error: "Unauthorized"});
 
   try {
-    // 1. Check status directly with Stripe
     const session = await stripe.checkout.sessions.retrieve(sessionId);
     
     if (session.payment_status === 'paid') {
        const user = await User.findById(userIdRaw);
        if (!user) return res.status(404).json({error: "User not found"});
 
-       // 2. Idempotency: Check if we already processed this session
-       // (via webhook or previous manual check)
        if (!user.processedSessions) user.processedSessions = [];
        
        if (!user.processedSessions.includes(sessionId)) {
@@ -443,7 +438,9 @@ app.post('/api/credits/verify-session', async (req, res) => {
          console.log(`ℹ️ [Manual Verify] Session ${sessionId} already processed.`);
        }
 
-       return res.json({ success: true, credits: user.credits });
+       // ✅ REFRESH: Fetch explicit fresh data to return
+       const freshUser = await User.findById(userIdRaw).select("credits");
+       return res.json({ success: true, credits: freshUser.credits });
     } else {
        return res.json({ success: false, message: "Payment not completed or pending" });
     }
@@ -453,7 +450,7 @@ app.post('/api/credits/verify-session', async (req, res) => {
   }
 });
 
-// --- STRIPE WEBHOOK (Async Reliability) ---
+// --- STRIPE WEBHOOK ---
 app.post('/webhook', bodyParser.raw({ type: 'application/json' }), async (request, response) => {
   const sig = request.headers['stripe-signature'];
   let event;
@@ -474,7 +471,6 @@ app.post('/webhook', bodyParser.raw({ type: 'application/json' }), async (reques
       try {
         const user = await User.findById(userId);
         if (user) {
-          // ✅ CHECK IDEMPOTENCY
           if (!user.processedSessions) user.processedSessions = [];
 
           if (user.processedSessions.includes(session.id)) {
@@ -485,7 +481,6 @@ app.post('/webhook', bodyParser.raw({ type: 'application/json' }), async (reques
             await user.save();
             console.log(`✅ [Webhook] Added ${creditAmount} credits to user ${userId}`);
 
-            // Send confirmation email
             const mailOptions = {
               from: process.env.EMAIL_USER || 'noreply@oneclickcv.com',
               to: user.email,
