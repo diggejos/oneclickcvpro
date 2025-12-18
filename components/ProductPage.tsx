@@ -47,8 +47,6 @@ export const ProductPage: React.FC<ProductPageProps> = ({ type, onBack, onStart 
     }
   };
 
-  
-
   const data = content[type];
 
   return (
@@ -98,7 +96,8 @@ export const ProductPage: React.FC<ProductPageProps> = ({ type, onBack, onStart 
           <div className="mt-6 bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
             <div className="aspect-video bg-black">
               <video
-                className="w-full h-full object-cover"
+                // ✅ UPDATED: added 'object-top' to crop bottom if needed
+                className="w-full h-full object-cover object-top"
                 src="/video/demo.mp4"
                 controls
                 playsInline
