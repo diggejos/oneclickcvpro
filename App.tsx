@@ -464,7 +464,13 @@ const App: React.FC = () => {
     if (!showAuthModal) setShowAuthModal(true);
     return <Navigate to="/editor" replace />;
   };
-
+  const handleCreditsPurchased = (newCredits: number) => {
+    if (user) {
+      const updatedUser = { ...user, credits: newCredits };
+      updateUserState(updatedUser);
+    }
+    setShowPricingModal(false);
+  };
   return (
     <>
       <TopNav
@@ -552,7 +558,7 @@ const App: React.FC = () => {
         <PricingModal
           onClose={() => setShowPricingModal(false)}
           currentCredits={user.credits}
-          onPurchase={handleAddCredits}
+          onPurchase={handleCreditsPurchased}
           userId={user.id}
         />
       )}
