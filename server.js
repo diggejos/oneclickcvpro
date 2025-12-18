@@ -21,9 +21,6 @@ const toObjectId = (id) => {
 };
 
 // --- EMAIL SETUP ---
-// Configure email transporter (using Gmail or your email service)
-// For other services: update host, port, auth as needed
-
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
   port: Number(process.env.EMAIL_PORT || 587),
@@ -34,9 +31,6 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-
-
-// Test email connection (logs at startup)
 transporter.verify((error, success) => {
   if (error) {
     console.warn('⚠️ Email service not configured:', error.message);
@@ -47,7 +41,6 @@ transporter.verify((error, success) => {
 
 const app = express();
 
-// erlaubt Frontend-Origin(s)
 const allowedOrigins = [
   "https://oneclickcvpro-frontend.onrender.com",
   "https://oneclickcvpro.com",
@@ -55,24 +48,19 @@ const allowedOrigins = [
   "http://localhost:3000",
 ];
 
-// CORS MUSS vor allen routes kommen
 app.use(
   cors({
     origin: (origin, callback) => {
-      // erlaubt Requests ohne Origin (z.B. Stripe Webhooks / Postman)
       if (!origin) return callback(null, true);
-
       if (allowedOrigins.includes(origin)) return callback(null, true);
-
       return callback(new Error("Not allowed by CORS: " + origin));
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "x-user-id", "stripe-signature"],
-    credentials: false, // du nutzt keine Cookies -> false lassen
+    credentials: false, 
   })
 );
 
-// Preflight immer beantworten
 app.options("*", cors());
 
 const PORT = process.env.PORT || 4242;
@@ -101,16 +89,12 @@ app.get("/api/users/me", async (req, res) => {
 });
 
 // --- MIDDLEWARE ---
-// Stripe Webhook needs raw body, so we handle that specifically
 app.use((req, res, next) => {
   if (req.originalUrl === '/webhook') return next();
-
-  // allow bigger resumes (base64 PDFs/images can be large)
   express.json({ limit: "25mb" })(req, res, next);
 });
 
 // --- DATABASE CONNECTION ---
-// You must set MONGODB_URI in your environment variables
 if (process.env.MONGODB_URI) {
   mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('✅ Connected to MongoDB'))
@@ -123,24 +107,21 @@ if (process.env.MONGODB_URI) {
 
 const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
-
-  // For normal signup
   passwordHash: String,
   isVerified: { type: Boolean, default: false },
   verificationToken: String,
-
-  // For Google OAuth
   googleId: String,
   name: String,
   avatar: String,
-
   credits: { type: Number, default: 1 },
+  // ✅ NEW: Track processed sessions to prevent double-crediting
+  processedSessions: { type: [String], default: [] },
   createdAt: { type: Date, default: Date.now }
 });
 
 const resumeSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  resumeId: { type: String, required: true }, // Frontend UUID
+  resumeId: { type: String, required: true },
   title: String,
   lastModified: Number,
   baseResumeInput: Object,
@@ -163,7 +144,6 @@ const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 app.post('/api/auth/google', async (req, res) => {
   const { token } = req.body;
   try {
-    // Verify Google Token
     const ticket = await googleClient.verifyIdToken({
       idToken: token,
       audience: GOOGLE_CLIENT_ID,
@@ -171,21 +151,18 @@ app.post('/api/auth/google', async (req, res) => {
     const payload = ticket.getPayload();
     const { sub: googleId, email, name, picture } = payload;
 
-    // Find or Create User
     let user = await User.findOne({ email });
     if (!user) {
       user = new User({ googleId, email, name, avatar: picture, isVerified: true, verificationToken: null });
       await user.save();
     } else {
-      // Update info if changed
       user.avatar = picture;
       user.name = name;
       await user.save();
     }
 
-    // Return user data (including real DB credits)
     res.json({
-      id: user._id, // MongoID
+      id: user._id,
       email: user.email,
       name: user.name,
       avatar: user.avatar,
@@ -238,11 +215,8 @@ app.post('/api/resumes', async (req, res) => {
   if (!userId) return res.status(400).json({ error: "Invalid user id" });
 
   if (!resumeData || !resumeData.id) {
-    console.warn("❌ Missing resumeData.id", { userIdRaw, resumeData });
     return res.status(400).json({ error: "Missing resume id (resumeData.id)" });
   }
-
-  console.log("SAVE RESUME", { userId: userIdRaw, resumeId: resumeData.id, title: resumeData.title });
 
   try {
     const updated = await Resume.findOneAndUpdate(
@@ -292,15 +266,10 @@ app.delete('/api/resumes/:id', async (req, res) => {
 app.get('/api/auth/verify', async (req, res) => {
   try {
     const token = req.query.token;
-
-    if (!token || typeof token !== "string") {
-      return res.status(400).send("Missing token.");
-    }
+    if (!token || typeof token !== "string") return res.status(400).send("Missing token.");
 
     const user = await User.findOne({ verificationToken: token });
-    if (!user) {
-      return res.status(400).send("Invalid or expired token.");
-    }
+    if (!user) return res.status(400).send("Invalid or expired token.");
 
     user.isVerified = true;
     user.verificationToken = null;
@@ -312,27 +281,22 @@ app.get('/api/auth/verify', async (req, res) => {
 
     return res.redirect(`${baseClientUrl}/verified`);
   } catch (err) {
-    console.error("VERIFY ERROR:", err);
     return res.status(500).send("Server error.");
   }
 });
+
 app.post("/api/auth/register", async (req, res) => {
   try {
     const { email, password, name } = req.body;
     const normalizedEmail = String(email || "").trim().toLowerCase();
 
     const existing = await User.findOne({ email: normalizedEmail });
-    if (existing) {
-      return res.status(400).json({ error: "Email already used" });
-    }
+    if (existing) return res.status(400).json({ error: "Email already used" });
 
-    // ✅ PASSWORD RULES (server-side)
-    // min 8 chars, at least 1 number, at least 1 uppercase letter
     const passwordPattern = /^(?=.*\d)(?=.*[A-Z]).{8,}$/;
     if (!passwordPattern.test(password || "")) {
       return res.status(400).json({
-        error:
-          "Password must be at least 8 characters and include 1 number and 1 uppercase letter.",
+        error: "Password must be at least 8 characters and include 1 number and 1 uppercase letter.",
       });
     }
 
@@ -347,10 +311,7 @@ app.post("/api/auth/register", async (req, res) => {
       isVerified: false,
     });
 
-    const baseBackendUrl = (
-      process.env.BACKEND_URL || "https://oneclickcvpro-backend.onrender.com"
-    ).replace(/\/+$/g, "");
-
+    const baseBackendUrl = (process.env.BACKEND_URL || "https://oneclickcvpro-backend.onrender.com").replace(/\/+$/g, "");
     const verifyURL = `${baseBackendUrl}/api/auth/verify?token=${verificationToken}`;
 
     await transporter.sendMail({
@@ -372,13 +333,11 @@ app.post("/api/auth/register", async (req, res) => {
 });
 
 
-// --- EMAIL LOGIN ROUTE ---
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
   const normalizedEmail = String(email || "").trim().toLowerCase();
   
   const user = await User.findOne({ email: normalizedEmail });
-
   if (!user) return res.status(400).json({ error: "No user with that email" });
   if (!user.isVerified) return res.status(401).json({ error: "Email not verified" });
 
@@ -393,7 +352,7 @@ app.post('/api/auth/login', async (req, res) => {
     credits: user.credits
   });
 });
-// --- Credits management ---
+
 app.post("/api/credits/spend", async (req, res) => {
   try {
     const userIdRaw = req.headers["x-user-id"];
@@ -406,7 +365,6 @@ app.post("/api/credits/spend", async (req, res) => {
     })();
     if (!userId) return res.status(400).json({ error: "Invalid user id" });
 
-    // Atomic decrement only if credits > 0
     const user = await User.findOneAndUpdate(
       { _id: userId, credits: { $gt: 0 } },
       { $inc: { credits: -1 } },
@@ -431,16 +389,16 @@ app.post("/api/credits/spend", async (req, res) => {
 // --- PAYMENT ENDPOINTS ---
 
 app.post('/create-checkout-session', async (req, res) => {
-  const { priceId, amount, userId } = req.body; // userId passed from frontend
+  const { priceId, amount, userId } = req.body; 
 
   try {
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
       mode: 'payment',
-      success_url: `${CLIENT_URL}/editor?success=true&t=${Date.now()}`,
+      // ✅ CHANGE: Append session_id for immediate verification on return
+      success_url: `${CLIENT_URL}/editor?success=true&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${CLIENT_URL}/editor?canceled=true&t=${Date.now()}`,
-      // Attach UserID to metadata so Webhook knows who to credit
       metadata: {
         userId: userId,
         creditAmount: amount
@@ -454,73 +412,95 @@ app.post('/create-checkout-session', async (req, res) => {
   }
 });
 
-// --- STRIPE WEBHOOK (Secure Fulfillment) ---
-// This endpoint runs automatically when Stripe confirms payment
+// --- ✅ NEW: MANUAL VERIFICATION ENDPOINT (Instant Refresh) ---
+app.post('/api/credits/verify-session', async (req, res) => {
+  const { sessionId } = req.body;
+  const userIdRaw = req.headers['x-user-id'];
+  
+  if (!userIdRaw) return res.status(401).json({error: "Unauthorized"});
+
+  try {
+    // 1. Check status directly with Stripe
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    
+    if (session.payment_status === 'paid') {
+       const user = await User.findById(userIdRaw);
+       if (!user) return res.status(404).json({error: "User not found"});
+
+       // 2. Idempotency: Check if we already processed this session
+       // (via webhook or previous manual check)
+       if (!user.processedSessions) user.processedSessions = [];
+       
+       if (!user.processedSessions.includes(sessionId)) {
+          const amount = parseInt(session.metadata.creditAmount || '0');
+          if (amount > 0) {
+             console.log(`✅ [Manual Verify] Adding ${amount} credits for ${user.email}`);
+             user.credits += amount;
+             user.processedSessions.push(sessionId);
+             await user.save();
+          }
+       } else {
+         console.log(`ℹ️ [Manual Verify] Session ${sessionId} already processed.`);
+       }
+
+       return res.json({ success: true, credits: user.credits });
+    } else {
+       return res.json({ success: false, message: "Payment not completed or pending" });
+    }
+  } catch(e) {
+    console.error("Manual verify error:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- STRIPE WEBHOOK (Async Reliability) ---
 app.post('/webhook', bodyParser.raw({ type: 'application/json' }), async (request, response) => {
   const sig = request.headers['stripe-signature'];
   let event;
 
   try {
-    // Verify the webhook signature using your Secret from Stripe Dashboard
     event = stripe.webhooks.constructEvent(request.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
     console.error(`Webhook Error: ${err.message}`);
     return response.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // Handle the event
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
-    
-    // Retrieve metadata
     const userId = session.metadata.userId;
     const creditAmount = parseInt(session.metadata.creditAmount || '0');
 
     if (userId && creditAmount > 0) {
       try {
-        // Update User Credits in DB
         const user = await User.findById(userId);
         if (user) {
-          user.credits += creditAmount;
-          await user.save();
-          console.log(`✅ Added ${creditAmount} credits to user ${userId}`);
+          // ✅ CHECK IDEMPOTENCY
+          if (!user.processedSessions) user.processedSessions = [];
 
-          // Send confirmation email
-          const mailOptions = {
-            from: process.env.EMAIL_USER || 'noreply@oneclickcv.com',
-            to: user.email,
-            subject: `✅ Payment Confirmed - ${creditAmount} Credits Added to Your Account`,
-            html: `
-              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <h2 style="color: #333;">Payment Successful!</h2>
-                <p>Hi <strong>${user.name || 'there'}</strong>,</p>
-                <p>Your payment has been processed successfully. Here are the details:</p>
-                <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                  <p><strong>Credits Added:</strong> <span style="font-size: 24px; color: #4CAF50;">${creditAmount}</span></p>
-                  <p><strong>Total Credits:</strong> ${user.credits}</p>
-                  <p><strong>Amount Paid:</strong> $${(creditAmount * 1.0).toFixed(2)}</p>
-                </div>
-                <p>You can now use these credits to:</p>
-                <ul>
-                  <li>Generate AI-tailored resumes</li>
-                  <li>Get expert feedback and suggestions</li>
-                  <li>Create multiple resume versions</li>
-                </ul>
-                <p>Thank you for supporting OneClickCV Pro!</p>
-                <p style="color: #888; font-size: 12px; margin-top: 30px;">
-                  If you have any questions, reply to this email or visit our support page.
-                </p>
-              </div>
-            `
-          };
+          if (user.processedSessions.includes(session.id)) {
+            console.log(`ℹ️ [Webhook] Session ${session.id} already processed.`);
+          } else {
+            user.credits += creditAmount;
+            user.processedSessions.push(session.id);
+            await user.save();
+            console.log(`✅ [Webhook] Added ${creditAmount} credits to user ${userId}`);
 
-          transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-              console.error('❌ Email send failed:', error);
-            } else {
-              console.log('✅ Confirmation email sent to', user.email);
-            }
-          });
+            // Send confirmation email
+            const mailOptions = {
+              from: process.env.EMAIL_USER || 'noreply@oneclickcv.com',
+              to: user.email,
+              subject: `✅ Payment Confirmed - ${creditAmount} Credits Added`,
+              html: `
+                <h3>Payment Successful!</h3>
+                <p>We've added <strong>${creditAmount}</strong> credits to your account.</p>
+                <p>Total Credits: ${user.credits}</p>
+                <p>Happy building!</p>
+              `
+            };
+            transporter.sendMail(mailOptions, (e) => {
+              if (e) console.error('❌ Email failed:', e);
+            });
+          }
         }
       } catch (err) {
         console.error('Database update failed:', err);
