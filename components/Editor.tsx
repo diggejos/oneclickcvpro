@@ -328,6 +328,18 @@ export const Editor: React.FC<EditorProps> = ({
 
     autosaveTimer.current = window.setTimeout(() => {
       try {
+        // ✅ NEW: Check for empty content to prevent ghost saves
+        const hasContent = 
+          (baseResumeInput.content && baseResumeInput.content.trim().length > 0) ||
+          (jobDescriptionInput.content && jobDescriptionInput.content.trim().length > 0) ||
+          baseResumeData !== null ||
+          tailoredResumeData !== null;
+
+        if (!hasContent) {
+            // No content to save, just return
+            return;
+        }
+
         const resumeToSave = buildResumePayload();
         onSave(resumeToSave);
         setIsDirty(false);
