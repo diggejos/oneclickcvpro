@@ -61,7 +61,6 @@ const App: React.FC = () => {
 
   const [subPage, setSubPage] = useState<any>(null);
 
-  // 1. Define these variables EARLY so they are available everywhere
   const path = location.pathname.replace(/\/+$/, "") || "/";
   const viewFromPath: PageView =
     path === "/dashboard" ? "dashboard"
@@ -171,7 +170,7 @@ const App: React.FC = () => {
   }, [user?.id]);
 
 
-  // SEO Title (Using viewFromPath)
+  // SEO
   useEffect(() => {
     let title = "OneClickCVPro | Instant AI Resume Builder";
     if (viewFromPath === "dashboard") title = "My Dashboard | OneClickCVPro";
@@ -356,7 +355,19 @@ const App: React.FC = () => {
         <Route path="/dashboard" element={<RequireUser><Dashboard user={user!} resumes={savedResumes} onCreate={handleCreateNew} onOpen={handleOpenResume} onDelete={handleDeleteResume} onLogout={handleLogout} onAddCredits={() => setShowPricingModal(true)} onNavigate={handleNavigate} /></RequireUser>} />
         <Route path="/about" element={<AboutPage onBack={() => navigate(user ? "/dashboard" : "/editor")} />} />
         <Route path="/contact" element={<ContactPage onBack={() => navigate(user ? "/dashboard" : "/editor")} />} />
-        <Route path="/pricing" element={<PricingPage onBack={() => navigate(user ? "/dashboard" : "/editor")} onGetStarted={() => navigate("/editor")} />} />
+        
+        {/* ✅ UPDATED: Pricing Route with auth logic */}
+        <Route path="/pricing" element={
+          <PricingPage 
+            onBack={() => navigate(user ? "/dashboard" : "/editor")} 
+            onGetStarted={() => navigate("/editor")} 
+            onBuy={() => {
+              if (user) setShowPricingModal(true);
+              else setShowAuthModal(true);
+            }}
+          />
+        } />
+        
         <Route path="/blog" element={<BlogPage onBack={() => navigate(user ? "/dashboard" : "/editor")} initialPostId={subPage} />} />
         <Route path="/legal/:type" element={<LegalPage type={subPage as LegalPageType} onBack={() => navigate(user ? "/dashboard" : "/editor")} />} />
         <Route path="/product/:type" element={<ProductPage type={subPage as ProductType} onBack={() => navigate(user ? "/dashboard" : "/editor")} onStart={() => navigate("/editor")} />} />
