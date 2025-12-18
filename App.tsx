@@ -120,6 +120,7 @@ const App: React.FC = () => {
       : "home";
 
   // load user + stripe success handler (kept from your old code)
+// load user + stripe success handler
   useEffect(() => {
     const log = (...args: any[]) => console.log("[stripe-success]", ...args);
 
@@ -133,10 +134,12 @@ const App: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     const isSuccess = params.get("success") === "true";
 
+    // Helper: Force fresh fetch with timestamp to avoid caching
     const fetchMe = async (userId: string) => {
-      if (!BACKEND_URL) throw new Error("VITE_BACKEND_URL is empty in frontend build");
+      if (!BACKEND_URL) throw new Error("VITE_BACKEND_URL is empty");
 
-      const res = await fetch(`${BACKEND_URL}/api/users/me`, {
+      // ADDED: ?t=${Date.now()} to prevent browser caching
+      const res = await fetch(`${BACKEND_URL}/api/users/me?t=${Date.now()}`, {
         headers: { "x-user-id": userId },
         cache: "no-store",
       });
@@ -145,69 +148,87 @@ const App: React.FC = () => {
       if (!res.ok) throw new Error(data?.error || "Failed to fetch /api/users/me");
 
       const creditsRaw = data?.credits ?? data?.user?.credits ?? data?.data?.credits;
-      const credits = Number(creditsRaw);
-
-      return { data, credits };
+      return Number(creditsRaw);
     };
 
     const updateCreditsInState = (newCredits: number) => {
+      // Always read fresh from LS to avoid overwriting other tab changes
       const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
       if (!current?.id) return;
 
       const updated = { ...current, credits: newCredits };
+      
+      // 1. Update React State (Triggers Navbar re-render)
       setUser(updated);
+      
+      // 2. Persist to storage
       localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updated));
     };
 
-  // inside useEffect in App.tsx
-  if (isSuccess) {
-    (async () => {
-      try {
-        const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
-        if (!current?.id) {
-          // ... existing alert logic
-          return;
-        }
-  
-        const before = Number(current.credits || 0);
-        let latest = before;
-  
-        // Poll for up to 30 seconds (standard for Stripe webhooks)
-        for (let attempt = 0; attempt < 30; attempt++) {
-          try {
-            const { credits } = await fetchMe(current.id);
-            
-            if (Number.isFinite(credits) && credits > before) {
-              latest = credits;
-              
-              // 1. Update the React State (This updates the Navbar instantly)
-              const updatedUser = { ...current, credits: latest };
-              setUser(updatedUser); 
-              
-              // 2. Update LocalStorage for persistence
-              localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updatedUser));
-              
-              break; // Exit loop once credits are confirmed higher
-            }
-          } catch (e) {
-            console.error("Polling error", e);
+    if (isSuccess) {
+      (async () => {
+        try {
+          const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
+          
+          if (!current?.id) {
+            window.history.replaceState({}, "", window.location.pathname);
+            return;
           }
-          await new Promise((r) => setTimeout(r, 1500)); // Wait 1.5s between checks
-        }
-  
-        // Clear the "success=true" from URL without refreshing
-        window.history.replaceState({}, "", window.location.pathname);
-  
-        if (latest > before) {
-           // UI Feedback
-           alert(`Payment successful! Your credits have been updated.`);
-        }
-      } catch (e: any) {
-        console.error("[stripe-success] fatal", e);
-      }
-    })();
-  }
 
+          const before = Number(current.credits || 0);
+          let latest = before;
+
+          // Poll aggressively: 40 attempts x 500ms = 20 seconds
+          for (let attempt = 0; attempt < 40; attempt++) {
+            try {
+              const credits = await fetchMe(current.id);
+              log("polling credits...", { attempt, credits, before });
+
+              if (Number.isFinite(credits)) {
+                latest = credits;
+                
+                // If credits increased, update and stop polling
+                if (latest > before) {
+                   updateCreditsInState(latest);
+                   break;
+                }
+              }
+            } catch (e) {
+              console.warn("poll error", e);
+            }
+            // Wait 500ms (faster check)
+            await new Promise((r) => setTimeout(r, 500));
+          }
+
+          // Clean URL
+          window.history.replaceState({}, "", window.location.pathname);
+
+          if (latest > before) {
+             // Optional: Brief toast or alert
+             // alert("Payment successful! Credits updated.");
+             console.log("Credits updated successfully");
+          }
+        } catch (e) {
+          console.error("[stripe-success] fatal", e);
+          window.history.replaceState({}, "", window.location.pathname);
+        }
+      })();
+    }
+
+    // Window focus handler (keep this as backup)
+    const onFocus = async () => {
+      const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
+      if (current?.id) {
+        try {
+           const credits = await fetchMe(current.id);
+           if (Number.isFinite(credits)) updateCreditsInState(credits);
+        } catch(e) { console.error(e) }
+      }
+    };
+
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
     const onFocus = async () => {
       try {
         const current = JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || "null");
