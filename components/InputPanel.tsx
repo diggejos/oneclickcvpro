@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { FileText, Wand2, RotateCcw, Download, CheckCircle2, Edit2, Layout, Sliders, ImageIcon, RefreshCw, Zap, Building2, Languages, ScrollText, Lock, UploadCloud } from 'lucide-react';
+import { FileText, Wand2, RotateCcw, Download, CheckCircle2, Edit2, Layout, Sliders, ImageIcon, RefreshCw, Zap, Building2, Languages, ScrollText, Lock, UploadCloud, Plus } from 'lucide-react';
 import { AppState, ResumeConfig, TemplateId, ResumeLength, ResumeTone, FileInput, ResumeLanguage } from '../types';
 import { FileDropZone } from './FileDropZone';
 import { CreditConfirmModal } from "./CreditConfirmModal";
@@ -12,6 +12,7 @@ interface InputPanelProps {
   setJobDescriptionInput: (val: FileInput) => void;
   onGenerateBase: () => void;
   onGenerateTailored: () => void;
+  onStartFromScratch: () => void; // ✅ New Prop
   onPrint: (singlePage: boolean) => void;
   appState: AppState;
   resetBase: () => void;
@@ -35,6 +36,7 @@ export const InputPanel: React.FC<InputPanelProps> = ({
   setJobDescriptionInput,
   onGenerateBase,
   onGenerateTailored,
+  onStartFromScratch,
   onPrint,
   appState,
   resetBase,
@@ -63,11 +65,9 @@ export const InputPanel: React.FC<InputPanelProps> = ({
   const hasJobDescription = jobDescriptionInput.content.length > 0;
 
   // --- Premium Logic ---
-  // Cost is 1 credit for AI generation/tailoring
   const CREDIT_COST = 1;
   const canAfford = (userCredits || 0) >= CREDIT_COST;
 
-  // ✅ NEW: Guards to ensure LOGIN happens before credit modal
   const requireLoginFirst = () => {
     if (isGuest) {
       onRequireAuth();
@@ -76,7 +76,6 @@ export const InputPanel: React.FC<InputPanelProps> = ({
     return false;
   };
 
-  // ✅ NEW: Guard to ensure PRICING happens before credit modal (if insufficient credits)
   const requireCreditsFirst = () => {
     if (!canAfford) {
       onAddCredits();
@@ -96,7 +95,7 @@ export const InputPanel: React.FC<InputPanelProps> = ({
       onGenerateTailored();
     } catch (err: any) {
       if (err?.status === 402) {
-        onAddCredits(); // only if truly insufficient credits
+        onAddCredits(); 
       } else {
         alert(err?.message || "Something went wrong while spending credits.");
         console.error(err);
@@ -207,13 +206,25 @@ export const InputPanel: React.FC<InputPanelProps> = ({
                 {isGeneratingBase ? <RotateCcw className="animate-spin" size={14} /> : <CheckCircle2 size={14} />}
                 {isGeneratingBase ? 'Analyzing Content...' : 'Analyze & Create Base Resume'}
               </button>
+
+              {/* ✅ NEW: Manual Entry Option */}
+              <div className="text-center pt-2">
+                <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider relative top-[-8px] bg-slate-50 px-2">OR</span>
+                <button 
+                  onClick={onStartFromScratch}
+                  className="w-full py-2.5 rounded-lg border-2 border-slate-200 border-dashed text-slate-500 text-xs font-bold hover:border-indigo-300 hover:text-indigo-600 hover:bg-white transition-all flex items-center justify-center gap-2"
+                >
+                  <Edit2 size={14} /> Start from Scratch (Manual Entry)
+                </button>
+              </div>
+
             </div>
           ) : (
             <div className="flex items-center justify-between">
               <div className="text-xs text-slate-500 flex items-center gap-2">
                 <CheckCircle2 size={14} className="text-green-500" />
                 <span className="truncate max-w-[150px]">
-                   {baseResumeInput.type === 'file' ? baseResumeInput.fileName : 'Text Content Extracted'}
+                   {baseResumeInput.type === 'file' ? baseResumeInput.fileName : 'Resume Data Loaded'}
                 </span>
               </div>
               {profileImage && (
@@ -239,7 +250,7 @@ export const InputPanel: React.FC<InputPanelProps> = ({
               />
             </div>
 
-            {/* Settings Block - Always visible now if Base is ready */}
+            {/* Settings Block */}
             <div className="bg-slate-100 p-4 rounded-xl border border-slate-200 space-y-4">
                <div className="flex items-center gap-2 text-slate-700 font-semibold text-xs border-b border-slate-200 pb-2 mb-2">
                  <Sliders size={14} /> Style Configuration
