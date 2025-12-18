@@ -104,7 +104,6 @@ const App: React.FC = () => {
 
   // --- PAYMENT & USER LOAD LOGIC ---
   useEffect(() => {
-    // 1. Initial Resume Load
     if (user?.id) {
       fetchResumesFromDB(user.id);
     }
@@ -125,10 +124,9 @@ const App: React.FC = () => {
     };
 
     const updateCreditsInState = (newCredits: number) => {
-      console.log("Force updating credits to:", newCredits);
+      console.log("🔥 Updating local credits to:", newCredits);
       setUser((currentUser) => {
         if (!currentUser) return null;
-        // Force new object reference
         const updated = { ...currentUser, credits: newCredits };
         localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updated));
         return updated;
@@ -426,12 +424,10 @@ const App: React.FC = () => {
 
   return (
     <>
+      {/* ✅ NO MORE BLINKING: key removed, passing credits directly */}
       <TopNav
         user={user}
         credits={user?.credits} 
-        // ✅ NUCLEAR OPTION: This key forces TopNav to re-mount when credits change
-        key={`topnav-${user?.credits}`} 
-        
         onAddCredits={() => setShowPricingModal(true)}
         onLogout={handleLogout}
         onLogin={() => setShowAuthModal(true)}
