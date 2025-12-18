@@ -188,6 +188,47 @@ export const Editor: React.FC<EditorProps> = ({
     }
   };
 
+  // ✅ NEW: Start from Scratch Handler
+  const handleStartFromScratch = () => {
+    const emptyData: ResumeData = {
+      fullName: "Your Name",
+      contactInfo: "email@example.com | 123-456-7890",
+      location: "City, Country",
+      summary: "Write a short professional summary about yourself here...",
+      skills: ["Skill 1", "Skill 2", "Skill 3"],
+      experience: [
+        {
+          role: "Job Title",
+          company: "Company Name",
+          duration: "2020 - Present",
+          points: ["Key achievement or responsibility 1", "Key achievement or responsibility 2"],
+        }
+      ],
+      education: [
+        {
+          degree: "Degree Name",
+          school: "University / School",
+          year: "2019"
+        }
+      ],
+      profileImage: undefined
+    };
+
+    setBaseResumeData(emptyData);
+    setAppState(AppState.BASE_READY);
+    setViewMode("base");
+    
+    if (resumeTitle === "Untitled Resume") {
+      setResumeTitle("My New Resume");
+    }
+    
+    setIsDirty(true);
+    setMobileTab("preview");
+    
+    // ✅ Automatically open the manual editor so they can start typing
+    setTimeout(() => setIsEditModalOpen(true), 100);
+  };
+
   const handleGenerateTailored = async () => {
     const sourceData = baseResumeData;
     if (!sourceData) return;
@@ -328,17 +369,14 @@ export const Editor: React.FC<EditorProps> = ({
 
     autosaveTimer.current = window.setTimeout(() => {
       try {
-        // ✅ NEW: Check for empty content to prevent ghost saves
+        // ✅ Check for empty content to prevent ghost saves
         const hasContent = 
           (baseResumeInput.content && baseResumeInput.content.trim().length > 0) ||
           (jobDescriptionInput.content && jobDescriptionInput.content.trim().length > 0) ||
           baseResumeData !== null ||
           tailoredResumeData !== null;
 
-        if (!hasContent) {
-            // No content to save, just return
-            return;
-        }
+        if (!hasContent) return;
 
         const resumeToSave = buildResumePayload();
         onSave(resumeToSave);
@@ -426,7 +464,7 @@ export const Editor: React.FC<EditorProps> = ({
           mobileTab === "preview" ? "md:flex hidden" : "flex",
         ].join(" ")}
       >
-        {/* Panel Header (desktop only; mobile uses the switcher) */}
+        {/* Panel Header */}
         <div className="hidden md:flex px-4 py-3 border-b border-slate-200 bg-slate-50 items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <Logo iconOnly className="w-7 h-7 flex-shrink-0" />
@@ -495,6 +533,7 @@ export const Editor: React.FC<EditorProps> = ({
               setIsDirty(true);
             }}
             onGenerateBase={handleGenerateBase}
+            onStartFromScratch={handleStartFromScratch} // ✅ Pass the new handler
             onGenerateTailored={handleGenerateTailored}
             onPrint={handlePrint}
             appState={appState}
@@ -523,7 +562,6 @@ export const Editor: React.FC<EditorProps> = ({
           mobileTab === "inputs" ? "md:block hidden" : "block",
         ].join(" ")}
       >
-        {/* SEO LANDING CONTENT - Visible when no data */}
         {!activeResumeData && !isLoading && appState !== AppState.ERROR && (
           <div className="h-full flex flex-col items-center animate-in fade-in zoom-in duration-500 overflow-y-auto">
             <article className="max-w-3xl w-full text-center space-y-8 pt-4 px-6 pb-8 flex-grow">
@@ -543,7 +581,6 @@ export const Editor: React.FC<EditorProps> = ({
                 </p>
               </header>
 
-              {/* Feature Grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left mt-8">
                 <section className="bg-white p-5 rounded-xl shadow-sm border border-slate-100">
                   <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center mb-3">
