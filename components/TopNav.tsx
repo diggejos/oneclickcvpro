@@ -5,6 +5,9 @@ import { Logo } from "./Logo";
 
 type Props = {
   user: User | null;
+  // ✅ NEW: Explicit credits prop ensures updates trigger immediately
+  credits?: number; 
+  
   onAddCredits: () => void;
   onLogout: () => void;
   onLogin: () => void;
@@ -16,12 +19,16 @@ type Props = {
 
 export const TopNav: React.FC<Props> = ({
   user,
+  credits, // Receive the explicit prop
   onAddCredits,
   onLogout,
   onLogin,
   onNavigate,
   onBack,
 }) => {
+  // Use explicit credits if available, otherwise fall back to user object
+  const displayCredits = credits !== undefined ? credits : user?.credits;
+
   return (
     <nav className="bg-white border-b border-slate-200 sticky top-0 z-50">
       <div className="w-full flex items-center justify-between px-3 sm:px-6 py-2 sm:py-3">
@@ -68,8 +75,12 @@ export const TopNav: React.FC<Props> = ({
                 />
 
                 {/* always show number */}
-                <span className="text-xs sm:text-sm font-bold tabular-nums">
-                  {user.credits}
+                {/* ✅ UPDATED: Key forces re-render animation when number changes */}
+                <span 
+                  key={displayCredits} 
+                  className="text-xs sm:text-sm font-bold tabular-nums animate-in fade-in zoom-in duration-300"
+                >
+                  {displayCredits}
                 </span>
 
                 {/* only show label on >= sm */}
