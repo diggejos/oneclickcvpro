@@ -281,12 +281,12 @@ ${userPrompt}
   return JSON.parse(response.text) as { data: ResumeData; description: string };
 };
 
-/* -------------------- Unified Chat Agent (still stub) -------------------- */
+/* -------------------- Unified Chat Agent -------------------- */
 interface UnifiedChatResult {
   text: string;
   proposal?: {
     data: ResumeData;
-    description: string; // ✅ ADD THIS
+    description: string;
     metadata: {
       source: "ai";
       improvedSections: string[];
@@ -295,34 +295,62 @@ interface UnifiedChatResult {
 }
 
 export async function unifiedChatAgent(
-  history: { role: "user" | "model"; text: string }[],
+  history: { role: "user" | "model" | "assistant"; text: string }[],
   text: string,
   currentResumeData: ResumeData | null
 ): Promise<UnifiedChatResult> {
 
-  // 🟡 No resume loaded → support mode
+  // 🟡 No resume loaded → Support / Q&A Mode
   if (!currentResumeData) {
-    return {
-      text:
-        "I can help with questions about the app. Open the editor if you want me to change your CV.",
-    };
+    const model = "gemini-2.5-flash";
+    const systemInstruction = `
+      You are the expert AI support assistant for OneClickCVPro.
+      Your role is to answer questions about the app, features, pricing, and general resume advice.
+      
+      Key Info:
+      - Users build resumes in the 'Editor'.
+      - They manage saved resumes in the 'Dashboard'.
+      - 'Credits' are used for AI tailoring (1 credit) and PDF downloads (1 credit).
+      - If a user wants to edit their resume, tell them to open it in the Editor first.
+      
+      Be helpful, brief, and friendly. Do not hallucinate features.
+    `.trim();
+
+    try {
+      const response = await withRetry(() =>
+        ai.models.generateContent({
+          model,
+          config: { systemInstruction },
+          contents: history.map(m => ({
+            // ✅ Fix: Map 'assistant' (from state) to 'model' (for Gemini API)
+            role: m.role === 'assistant' || m.role === 'model' ? 'model' : 'user',
+            parts: [{ text: m.text }]
+          }))
+        })
+      );
+      
+      return { text: response.text || "I'm sorry, I couldn't generate a response." };
+    } catch (err: any) {
+       console.error("Support Chat Error:", err);
+       return { text: "I'm having trouble connecting to the support brain right now. Please try again." };
+    }
   }
 
+  // 🔵 Resume Loaded → Edit Mode
   try {
-    // 🔵 Ask Gemini to modify the resume
     const result = await updateResumeWithChat(currentResumeData, text);
 
-  return {
-    text: "I’ve prepared a suggested change. Would you like to apply it?",
-    proposal: {
-      data: result.data,
-      description: result.description, // ✅ THIS IS THE FIX
-      metadata: {
-        source: "ai",
-        improvedSections: [],
+    return {
+      text: "I’ve prepared a suggested change. Would you like to apply it?",
+      proposal: {
+        data: result.data,
+        description: result.description,
+        metadata: {
+          source: "ai",
+          improvedSections: [],
+        },
       },
-    },
-  };
+    };
 
   } catch (err: any) {
     const msg = String(err?.message || err);
@@ -338,4 +366,3 @@ export async function unifiedChatAgent(
     };
   }
 }
-
