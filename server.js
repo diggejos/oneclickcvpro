@@ -11,7 +11,6 @@ import crypto from "crypto";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// Helper to ensure ObjectId
 const toObjectId = (id) => {
   try {
     return new mongoose.Types.ObjectId(id);
@@ -68,7 +67,6 @@ const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "1040938691698-o9k428s47iskgq1vs6rk1dnc1857tnir.apps.googleusercontent.com";
 
 
-// --- USER ENDPOINT ---
 app.get("/api/users/me", async (req, res) => {
   try {
     const userIdRaw = req.headers["x-user-id"];
@@ -77,7 +75,6 @@ app.get("/api/users/me", async (req, res) => {
     const userId = toObjectId(userIdRaw);
     if (!userId) return res.status(400).json({ error: "Invalid user id" });
 
-    // Force fresh read (lean is faster)
     const user = await User.findById(userId).select("email name avatar credits").lean();
     if (!user) return res.status(404).json({ error: "User not found" });
 
@@ -409,12 +406,11 @@ app.post('/create-checkout-session', async (req, res) => {
   }
 });
 
-// --- ✅ ATOMIC MANUAL VERIFICATION (FIXED) ---
+// --- ✅ ATOMIC MANUAL VERIFICATION WITH RETRY ---
 app.post('/api/credits/verify-session', async (req, res) => {
   const { sessionId } = req.body;
   const userIdRaw = req.headers['x-user-id'];
   
-  // ✅ 1. Safe ID Casting
   const userId = toObjectId(userIdRaw);
   if (!userId) return res.status(401).json({error: "Unauthorized"});
 
@@ -422,38 +418,48 @@ app.post('/api/credits/verify-session', async (req, res) => {
     console.log(`[Verify] Checking session ${sessionId} for user ${userId}`);
     const session = await stripe.checkout.sessions.retrieve(sessionId);
     
-    // ✅ 2. Handle both 'paid' and 'complete' (Stripe terminology can vary)
+    // Check if Stripe considers it paid
     if (session.payment_status === 'paid' || session.status === 'complete') {
        const amount = parseInt(session.metadata.creditAmount || '0');
        
        if (amount > 0) {
-         // ✅ 3. ATOMIC UPDATE
-         // Try to find user with this ID *AND* where this session hasn't been processed
-         const result = await User.findOneAndUpdate(
+         // 1. Try ATOMIC update
+         const updatedUser = await User.findOneAndUpdate(
             { _id: userId, processedSessions: { $ne: sessionId } }, 
             { 
                $inc: { credits: amount },
                $push: { processedSessions: sessionId }
             },
-            { new: true } // Return updated doc if it worked
+            { new: true }
          );
          
-         if (result) {
+         if (updatedUser) {
             console.log(`✅ [Verify] Manually added ${amount} credits.`);
-         } else {
-            console.log(`ℹ️ [Verify] Session already processed (webhook was faster).`);
+            return res.json({ success: true, credits: updatedUser.credits });
+         } 
+         
+         // 2. If update failed (returned null), it means the Webhook likely already processed it.
+         // BUT! Database read replicas might still show old data for a few milliseconds.
+         // So we enter a "Wait Loop" to ensure we return the FRESH data.
+         console.log(`ℹ️ [Verify] Session processed by webhook. Waiting for DB sync...`);
+         
+         for (let i = 0; i < 5; i++) {
+            // Check if user has this session in processedSessions
+            const freshUser = await User.findOne({ _id: userId, processedSessions: sessionId }).select("credits");
+            if (freshUser) {
+               console.log(`✅ [Verify] Found updated credits: ${freshUser.credits}`);
+               return res.json({ success: true, credits: freshUser.credits });
+            }
+            // Wait 200ms and try again
+            await new Promise(r => setTimeout(r, 200));
          }
        }
 
-       // ✅ 4. ALWAYS return the fresh credit count from the DB
-       // (Whether we updated it just now, or the webhook did earlier)
-       const freshUser = await User.findById(userId).select("credits").lean();
-       console.log(`[Verify] Returning credits: ${freshUser?.credits}`);
-       
-       return res.json({ success: true, credits: freshUser?.credits || 0 });
+       // 3. Fallback: If after waiting we still don't see it (weird), just return whatever we have.
+       const finalUser = await User.findById(userId).select("credits").lean();
+       return res.json({ success: true, credits: finalUser?.credits || 0 });
 
     } else {
-       console.log(`[Verify] Session ${sessionId} status: ${session.payment_status}`);
        return res.json({ success: false, message: "Payment pending or incomplete" });
     }
   } catch(e) {
@@ -462,7 +468,7 @@ app.post('/api/credits/verify-session', async (req, res) => {
   }
 });
 
-// --- ✅ ATOMIC WEBHOOK (FIXED) ---
+// --- ✅ ATOMIC WEBHOOK ---
 app.post('/webhook', bodyParser.raw({ type: 'application/json' }), async (request, response) => {
   const sig = request.headers['stripe-signature'];
   let event;
@@ -479,12 +485,11 @@ app.post('/webhook', bodyParser.raw({ type: 'application/json' }), async (reques
     const userIdRaw = session.metadata.userId;
     const creditAmount = parseInt(session.metadata.creditAmount || '0');
 
-    // ✅ Safe ID Casting
     const userId = toObjectId(userIdRaw);
 
     if (userId && creditAmount > 0) {
       try {
-         // ✅ ATOMIC UPDATE: Safe against race conditions
+         // Atomic update prevents race conditions
          const updatedUser = await User.findOneAndUpdate(
             { _id: userId, processedSessions: { $ne: session.id } },
             { 
@@ -496,7 +501,7 @@ app.post('/webhook', bodyParser.raw({ type: 'application/json' }), async (reques
 
          if (updatedUser) {
             console.log(`✅ [Webhook] Atomic add: ${creditAmount} credits to ${userId}`);
-            // Optional: Email
+            
             const mailOptions = {
               from: process.env.EMAIL_USER || 'noreply@oneclickcv.com',
               to: updatedUser.email,
@@ -515,5 +520,6 @@ app.post('/webhook', bodyParser.raw({ type: 'application/json' }), async (reques
 
   response.send();
 });
+
 
 app.listen(PORT, () => console.log(`🚀 Backend running on port ${PORT}`));
