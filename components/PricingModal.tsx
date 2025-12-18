@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, Zap, Check, CreditCard, ShieldCheck, AlertCircle } from "lucide-react";
+import { X, Zap, Check, CreditCard, ShieldCheck, AlertCircle, Star } from "lucide-react";
 import { Logo } from "./Logo";
 
 const STRIPE_PUBLISHABLE_KEY =
@@ -139,13 +139,14 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                   <Zap size={16} className="fill-indigo-200 text-indigo-700" />
                   <span>10 Credits</span>
                 </div>
+                <p className="text-[10px] text-slate-400 mt-1 font-medium">$0.50 / credit</p>
 
                 <ul className="mt-3 space-y-2 text-sm text-slate-600">
                   <li className="flex items-center gap-2">
-                    <Check size={14} className="text-green-500" /> 10 Tailored Resumes
+                    <Check size={14} className="text-green-500" /> Full AI Access
                   </li>
                   <li className="flex items-center gap-2">
-                    <Check size={14} className="text-green-500" /> Basic Translation
+                    <Check size={14} className="text-green-500" /> PDF Export
                   </li>
                 </ul>
 
@@ -159,12 +160,15 @@ export const PricingModal: React.FC<PricingModalProps> = ({
               </div>
 
               {/* pro */}
-              <div className="bg-white border-2 border-indigo-600 rounded-xl p-4 sm:p-5 shadow-sm relative">
-                <div className="absolute top-3 right-3 bg-indigo-600 text-white text-[10px] font-extrabold px-2 py-1 rounded-full uppercase tracking-wider">
-                  Best Value
+              <div className="bg-white border-2 border-indigo-600 rounded-xl p-4 sm:p-5 shadow-sm relative overflow-hidden">
+                {/* Fixed Badge: Top Right Corner */}
+                <div className="absolute top-0 right-0">
+                   <div className="bg-indigo-600 text-white text-[9px] font-extrabold px-3 py-1 rounded-bl-lg flex items-center gap-1">
+                     <Star size={10} className="fill-white" /> BEST VALUE
+                   </div>
                 </div>
 
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between mt-1">
                   <h4 className="font-extrabold text-slate-900">Pro Pack</h4>
                   <span className="text-xs font-bold text-slate-500">$19</span>
                 </div>
@@ -173,16 +177,17 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                   <Zap size={16} className="fill-indigo-600 text-yellow-300" />
                   <span>50 Credits</span>
                 </div>
+                <p className="text-[10px] text-emerald-600 mt-1 font-bold">Save 24% ($0.38 / credit)</p>
 
                 <ul className="mt-3 space-y-2 text-sm text-slate-600">
                   <li className="flex items-center gap-2">
-                    <Check size={14} className="text-green-500" /> 50 Tailored Resumes
+                    <Check size={14} className="text-green-500" /> Full AI Access
                   </li>
                   <li className="flex items-center gap-2">
-                    <Check size={14} className="text-green-500" /> Advanced AI Mode
+                    <Check size={14} className="text-green-500" /> Bulk PDF Export
                   </li>
                   <li className="flex items-center gap-2">
-                    <Check size={14} className="text-green-500" /> Priority Support
+                    <Check size={14} className="text-green-500" /> Credits Never Expire
                   </li>
                 </ul>
 
