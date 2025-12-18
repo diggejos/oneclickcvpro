@@ -1,11 +1,11 @@
 import React from 'react';
-import { ArrowLeft, Check, Zap, HelpCircle, Star } from 'lucide-react';
+import { ArrowLeft, Check, Zap, HelpCircle, Star, TrendingUp } from 'lucide-react';
 import { Logo } from './Logo';
 
 interface PricingPageProps {
   onBack: () => void;
-  onGetStarted: () => void; // Navigate to editor
-  onBuy: () => void;        // Trigger Auth or Stripe
+  onGetStarted: () => void;
+  onBuy: () => void;
 }
 
 export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onGetStarted, onBuy }) => {
@@ -38,7 +38,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onGetStarted, 
            </h1>
            <p className="text-xl text-indigo-100 mb-8 leading-relaxed">
              Our flexible Credit System means you only pay for what you use. 
-             Create unlimited base resumes for free. Pay only when you use AI to tailor, translate, or export.
+             Same powerful AI features for everyone—just choose your volume.
            </p>
          </div>
       </header>
@@ -49,7 +49,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onGetStarted, 
             
             {/* Free Tier */}
             <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-8 flex flex-col">
-               <div className="mb-4">
+               <div className="mb-6">
                   <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide">The Basics</span>
                </div>
                <h3 className="text-3xl font-bold text-slate-900 mb-2">Free</h3>
@@ -68,7 +68,10 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onGetStarted, 
                     <Check size={18} className="text-green-500 flex-shrink-0" />
                     <span>Access to Classic Template</span>
                   </div>
-                  {/* PDF Export removed from free tier */}
+                  <div className="flex gap-3 text-sm text-slate-400">
+                    <Zap size={18} className="text-slate-300 flex-shrink-0" />
+                    <span>Pay only for AI & Export</span>
+                  </div>
                </div>
                
                <button onClick={onGetStarted} className="w-full py-3 border-2 border-slate-200 text-slate-700 font-bold rounded-xl hover:border-slate-400 hover:text-slate-900 transition-colors">
@@ -78,19 +81,21 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onGetStarted, 
 
             {/* Starter Pack */}
             <div className="bg-white rounded-2xl shadow-xl border-2 border-indigo-100 p-8 flex flex-col relative overflow-hidden">
-               <div className="mb-4">
+               <div className="mb-6 flex justify-between items-start">
                   <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide">Starter Pack</span>
                </div>
-               <div className="flex items-baseline gap-1 mb-2">
+               
+               <div className="flex items-baseline gap-1 mb-1">
                  <h3 className="text-4xl font-bold text-slate-900">$5</h3>
                  <span className="text-slate-500 text-sm">/ once</span>
                </div>
+               <p className="text-indigo-600 text-xs font-bold mb-2">$0.50 per credit</p>
                <p className="text-slate-500 mb-6 text-sm">For tailored applications to your top picks.</p>
                
                <div className="flex-grow space-y-4 mb-8">
-                  <div className="flex gap-3 text-sm text-slate-700">
+                  <div className="flex gap-3 text-sm text-slate-700 bg-indigo-50 p-3 rounded-lg border border-indigo-100">
                     <Zap size={18} className="text-indigo-600 flex-shrink-0 fill-indigo-100" />
-                    <span className="font-bold">10 AI Credits</span>
+                    <span className="font-bold text-indigo-900">10 AI Credits</span>
                   </div>
                   <div className="flex gap-3 text-sm text-slate-700">
                     <Check size={18} className="text-green-500 flex-shrink-0" />
@@ -102,7 +107,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onGetStarted, 
                   </div>
                   <div className="flex gap-3 text-sm text-slate-700">
                     <Check size={18} className="text-green-500 flex-shrink-0" />
-                    <span>All Pro Templates</span>
+                    <span>Access All Features</span>
                   </div>
                </div>
                
@@ -111,36 +116,44 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onGetStarted, 
                </button>
             </div>
 
-            {/* Pro Pack */}
-            <div className="bg-slate-900 rounded-2xl shadow-2xl p-8 flex flex-col text-white relative">
-               <div className="absolute top-0 right-0 p-4">
-                  <Star className="text-yellow-400 fill-yellow-400" size={24} />
+            {/* Pro Pack - Corrected Layout */}
+            <div className="bg-slate-900 rounded-2xl shadow-2xl p-8 flex flex-col text-white relative border border-slate-700">
+               {/* Fixed Badge Position */}
+               <div className="absolute top-0 right-0">
+                  <div className="bg-yellow-400 text-slate-900 text-xs font-extrabold px-4 py-1.5 rounded-bl-xl rounded-tr-xl flex items-center gap-1 shadow-md">
+                    <Star size={12} className="fill-slate-900" /> BEST VALUE
+                  </div>
                </div>
-               <div className="mb-4">
-                  <span className="bg-indigo-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide">Pro Value</span>
+
+               <div className="mb-6 mt-2">
+                  <span className="bg-indigo-600 text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide">Power User</span>
                </div>
-               <div className="flex items-baseline gap-1 mb-2">
+               
+               <div className="flex items-baseline gap-1 mb-1">
                  <h3 className="text-4xl font-bold text-white">$19</h3>
                  <span className="text-slate-400 text-sm">/ once</span>
                </div>
+               <p className="text-emerald-400 text-xs font-bold mb-2 flex items-center gap-1">
+                 <TrendingUp size={12}/> SAVE 24% ($0.38 per credit)
+               </p>
                <p className="text-slate-300 mb-6 text-sm">Massive volume for serious job hunters.</p>
                
                <div className="flex-grow space-y-4 mb-8">
-                  <div className="flex gap-3 text-sm text-slate-200">
+                  <div className="flex gap-3 text-sm text-slate-200 bg-white/10 p-3 rounded-lg border border-white/20">
                     <Zap size={18} className="text-yellow-400 flex-shrink-0 fill-yellow-400" />
                     <span className="font-bold text-white">50 AI Credits</span>
                   </div>
                    <div className="flex gap-3 text-sm text-slate-200">
                     <Check size={18} className="text-emerald-400 flex-shrink-0" />
-                    <span>Advanced GPT-4 Rewrite Mode</span>
+                    <span>Same Powerful AI Features</span>
                   </div>
                   <div className="flex gap-3 text-sm text-slate-200">
                     <Check size={18} className="text-emerald-400 flex-shrink-0" />
-                    <span>Priority Support</span>
+                    <span>Bulk PDF Exports</span>
                   </div>
                   <div className="flex gap-3 text-sm text-slate-200">
                     <Check size={18} className="text-emerald-400 flex-shrink-0" />
-                    <span>Lifetime Access to Resume</span>
+                    <span>Credits Never Expire</span>
                   </div>
                </div>
                
@@ -156,23 +169,23 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onGetStarted, 
             
             <div className="space-y-6">
                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                  <h4 className="font-bold text-lg mb-2 flex items-center gap-2"><HelpCircle size={20} className="text-indigo-600"/> How do credits work?</h4>
+                  <h4 className="font-bold text-lg mb-2 flex items-center gap-2"><HelpCircle size={20} className="text-indigo-600"/> Is there a difference in features?</h4>
                   <p className="text-slate-600 text-sm leading-relaxed">
-                     One credit allows you to perform one major action. For example, tailoring your resume to a job description costs 1 credit. Exporting your final PDF costs 1 credit. Editing manually is always free.
+                     No! Both the Starter Pack and Pro Pack give you full access to all AI features (Tailoring, Translation, PDF Export). The Pro Pack simply offers a significant discount on the cost per credit.
                   </p>
                </div>
                
                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                  <h4 className="font-bold text-lg mb-2 flex items-center gap-2"><HelpCircle size={20} className="text-indigo-600"/> Do credits expire?</h4>
+                  <h4 className="font-bold text-lg mb-2 flex items-center gap-2"><HelpCircle size={20} className="text-indigo-600"/> How do credits work?</h4>
                   <p className="text-slate-600 text-sm leading-relaxed">
-                     No. Once you purchase a credit pack, the credits are yours forever until you use them. There is no monthly subscription fee.
+                     One credit = One major action. Tailoring your resume to a job description costs 1 credit. Downloading the final high-quality PDF costs 1 credit. Minor manual edits are always free.
                   </p>
                </div>
 
                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                  <h4 className="font-bold text-lg mb-2 flex items-center gap-2"><HelpCircle size={20} className="text-indigo-600"/> Is PDF export free?</h4>
+                  <h4 className="font-bold text-lg mb-2 flex items-center gap-2"><HelpCircle size={20} className="text-indigo-600"/> Do credits expire?</h4>
                   <p className="text-slate-600 text-sm leading-relaxed">
-                     You can build, edit, and preview your resume for free. To download the final high-quality PDF specifically tailored for ATS systems, you will need to use 1 credit.
+                     No. Once you purchase credits, they are yours forever until you use them. There are no monthly fees or expiration dates.
                   </p>
                </div>
             </div>
