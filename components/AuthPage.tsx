@@ -39,6 +39,19 @@ export const AuthPage: React.FC<AuthPageProps> = ({
       return;
     }
 
+    if (mode === "signup") {
+      // Passwortregeln: min. 8 Zeichen, mindestens 1 Zahl, mindestens 1 Grossbuchstabe
+      const passwordRegex = /^(?=.*\d)(?=.*[A-Z]).{8,}$/;
+    
+      if (!passwordRegex.test(password)) {
+        setError(
+          "Password must be at least 8 characters long and include at least one number and one uppercase letter."
+        );
+        return;
+      }
+    }
+
+
     setIsSubmitting(true);
     try {
       if (mode === 'signup') {
