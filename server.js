@@ -73,13 +73,11 @@ app.get("/api/users/me", async (req, res) => {
     const userIdRaw = req.headers["x-user-id"];
     if (!userIdRaw) return res.status(401).json({ error: "Unauthorized" });
 
-    const userId = (() => {
-      try { return new mongoose.Types.ObjectId(userIdRaw); } catch { return null; }
-    })();
+    const userId = toObjectId(userIdRaw);
     if (!userId) return res.status(400).json({ error: "Invalid user id" });
 
-    // Force fresh read
-    const user = await User.findById(userId).select("email name avatar credits");
+    // Force fresh read (lean is faster)
+    const user = await User.findById(userId).select("email name avatar credits").lean();
     if (!user) return res.status(404).json({ error: "User not found" });
 
     return res.json({ credits: user.credits });
@@ -262,7 +260,6 @@ app.delete('/api/resumes/:id', async (req, res) => {
   }
 });
 
-// --- VERIFICATION ROUTE ---
 app.get('/api/auth/verify', async (req, res) => {
   try {
     const token = req.query.token;
@@ -360,11 +357,10 @@ app.post("/api/credits/spend", async (req, res) => {
 
     if (!userIdRaw) return res.status(401).json({ error: "Unauthorized" });
 
-    const userId = (() => {
-      try { return new mongoose.Types.ObjectId(userIdRaw); } catch { return null; }
-    })();
+    const userId = toObjectId(userIdRaw);
     if (!userId) return res.status(400).json({ error: "Invalid user id" });
 
+    // Atomic decrement
     const user = await User.findOneAndUpdate(
       { _id: userId, credits: { $gt: 0 } },
       { $inc: { credits: -1 } },
@@ -411,7 +407,7 @@ app.post('/create-checkout-session', async (req, res) => {
   }
 });
 
-// --- MANUAL VERIFICATION ENDPOINT (The "Instant Refresh") ---
+// --- ✅ ATOMIC MANUAL VERIFICATION (FIXED) ---
 app.post('/api/credits/verify-session', async (req, res) => {
   const { sessionId } = req.body;
   const userIdRaw = req.headers['x-user-id'];
@@ -422,30 +418,24 @@ app.post('/api/credits/verify-session', async (req, res) => {
     const session = await stripe.checkout.sessions.retrieve(sessionId);
     
     if (session.payment_status === 'paid') {
-       const user = await User.findById(userIdRaw);
-       if (!user) return res.status(404).json({error: "User not found"});
-
-       if (!user.processedSessions) user.processedSessions = [];
+       const amount = parseInt(session.metadata.creditAmount || '0');
        
-       if (!user.processedSessions.includes(sessionId)) {
-          const amount = parseInt(session.metadata.creditAmount || '0');
-          if (amount > 0) {
-             console.log(`✅ [Manual Verify] Adding ${amount} credits for ${user.email}`);
-             user.credits += amount;
-             user.processedSessions.push(sessionId);
-             await user.save();
-          }
-       } else {
-         console.log(`ℹ️ [Manual Verify] Session ${sessionId} already processed.`);
+       if (amount > 0) {
+         // ✅ ATOMIC UPDATE: Only update if session ID is NOT in the list
+         await User.findOneAndUpdate(
+            { _id: userIdRaw, processedSessions: { $ne: sessionId } }, 
+            { 
+               $inc: { credits: amount },
+               $push: { processedSessions: sessionId }
+            }
+         );
        }
 
-       // ✅ CRITICAL: Force a fresh database read of the credits to return.
-       // This ensures that even if the webhook beat us to it, we return the NEW high number.
+       // ✅ Return FRESH credits immediately
        const freshUser = await User.findById(userIdRaw).select("credits").lean();
-       
-       return res.json({ success: true, credits: freshUser.credits });
+       return res.json({ success: true, credits: freshUser?.credits || 0 });
     } else {
-       return res.json({ success: false, message: "Payment not completed or pending" });
+       return res.json({ success: false, message: "Payment pending" });
     }
   } catch(e) {
     console.error("Manual verify error:", e.message);
@@ -453,7 +443,7 @@ app.post('/api/credits/verify-session', async (req, res) => {
   }
 });
 
-// --- STRIPE WEBHOOK ---
+// --- ✅ ATOMIC WEBHOOK (FIXED) ---
 app.post('/webhook', bodyParser.raw({ type: 'application/json' }), async (request, response) => {
   const sig = request.headers['stripe-signature'];
   let event;
@@ -472,34 +462,30 @@ app.post('/webhook', bodyParser.raw({ type: 'application/json' }), async (reques
 
     if (userId && creditAmount > 0) {
       try {
-        const user = await User.findById(userId);
-        if (user) {
-          if (!user.processedSessions) user.processedSessions = [];
+         // ✅ ATOMIC UPDATE: Safe against race conditions
+         const updatedUser = await User.findOneAndUpdate(
+            { _id: userId, processedSessions: { $ne: session.id } },
+            { 
+               $inc: { credits: creditAmount },
+               $push: { processedSessions: session.id }
+            },
+            { new: true } // Return the updated document
+         );
 
-          if (user.processedSessions.includes(session.id)) {
-            console.log(`ℹ️ [Webhook] Session ${session.id} already processed.`);
-          } else {
-            user.credits += creditAmount;
-            user.processedSessions.push(session.id);
-            await user.save();
-            console.log(`✅ [Webhook] Added ${creditAmount} credits to user ${userId}`);
-
+         if (updatedUser) {
+            console.log(`✅ [Webhook] Atomic add: ${creditAmount} credits to ${userId}`);
+            
+            // Email (optional, async)
             const mailOptions = {
               from: process.env.EMAIL_USER || 'noreply@oneclickcv.com',
-              to: user.email,
+              to: updatedUser.email,
               subject: `✅ Payment Confirmed - ${creditAmount} Credits Added`,
-              html: `
-                <h3>Payment Successful!</h3>
-                <p>We've added <strong>${creditAmount}</strong> credits to your account.</p>
-                <p>Total Credits: ${user.credits}</p>
-                <p>Happy building!</p>
-              `
+              html: `<h3>Payment Successful!</h3><p>Total Credits: ${updatedUser.credits}</p>`
             };
-            transporter.sendMail(mailOptions, (e) => {
-              if (e) console.error('❌ Email failed:', e);
-            });
-          }
-        }
+            transporter.sendMail(mailOptions, (e) => { if (e) console.error('Email failed:', e); });
+         } else {
+            console.log(`ℹ️ [Webhook] Session ${session.id} skipped (already processed).`);
+         }
       } catch (err) {
         console.error('Database update failed:', err);
       }
@@ -508,6 +494,5 @@ app.post('/webhook', bodyParser.raw({ type: 'application/json' }), async (reques
 
   response.send();
 });
-
 
 app.listen(PORT, () => console.log(`🚀 Backend running on port ${PORT}`));
