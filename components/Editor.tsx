@@ -281,6 +281,8 @@ export const Editor: React.FC<EditorProps> = ({
   const isTailoredView = viewMode === "tailored" && !!tailoredResumeData;
   const isLoading =
     appState === AppState.GENERATING_BASE || appState === AppState.GENERATING_TAILORED;
+  
+  const isPreviewing = !!previewResumeData; // ✅ ADD THIS
 
   const handleManualSave = (newData: ResumeData) => {
     if (isTailoredView) setTailoredResumeData(newData);
@@ -625,19 +627,6 @@ export const Editor: React.FC<EditorProps> = ({
                   <Layers size={12} /> Tailored
                 </button>
               </div>
-              {previewResumeData && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold px-2 py-1 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
-                    Previewing proposal
-                  </span>
-                  <button
-                    onClick={() => setPreviewResumeData(null)}
-                    className="text-xs font-bold px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-600 hover:text-indigo-600 shadow-sm"
-                  >
-                    Exit preview
-                  </button>
-                </div>
-              )}
 
               {isPreviewing && (
                 <div className="flex items-center gap-2">
