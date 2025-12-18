@@ -32,6 +32,8 @@ import {
 
 const BACKEND_URL = (import.meta as any).env.VITE_BACKEND_URL || "";
 const STORAGE_KEY_USER = "oneclickcv_user";
+const [editorSessionKey, setEditorSessionKey] = useState(0);
+
 
 export interface EditorActions {
   getResume: () => ResumeData | null;
@@ -296,10 +298,19 @@ const App: React.FC = () => {
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem(STORAGE_KEY_USER);
+  
+    // clear dashboard/editor-related state
     setSavedResumes([]);
     setCurrentResume(null);
-    navigate("/editor");
+  
+    // IMPORTANT: clear any in-editor loaded resume data by forcing a fresh editor instance
+    // simplest: navigate and hard refresh the route state (no full page reload needed)
+    navigate("/editor", { replace: true });
+  
+    // optional: also clear any editor actions ref so the global chat isn't "resume connected"
+    editorActionsRef.current = null;
   };
+
 
   // IMPORTANT: old "handleNavigate" now changes URL
   const handleNavigate = (page: PageView, sub?: any) => {
@@ -480,23 +491,27 @@ const App: React.FC = () => {
 
         {/* public pages */}
         <Route path="/" element={<Navigate to="/editor" replace />} />
-        <Route path="/editor" element={
-          <Editor
-            initialResume={currentResume}
-            onSave={handleSaveResume}
-            onBack={() => {
-              if (user) navigate("/dashboard");
-              else setShowAuthModal(true);
-            }}
-            isGuest={!user}
-            onRequireAuth={() => setShowAuthModal(true)}
-            currentUser={user}
-            onAddCredits={() => setShowPricingModal(true)}
-            onNavigate={handleNavigate}
-            onRegisterActions={(actions) => (editorActionsRef.current = actions)}
-            onSpendCredit={spendCredit}
+        <Route
+            path="/editor"
+            element={
+              <Editor
+                key={`${editorSessionKey}-${user?.id ?? "guest"}`} // ✅ forces full reset on logout/login
+                initialResume={currentResume}
+                onSave={handleSaveResume}
+                onBack={() => {
+                  if (user) navigate("/dashboard");
+                  else setShowAuthModal(true);
+                }}
+                isGuest={!user}
+                onRequireAuth={() => setShowAuthModal(true)}
+                currentUser={user}
+                onAddCredits={() => setShowPricingModal(true)}
+                onNavigate={handleNavigate}
+                onRegisterActions={(actions) => (editorActionsRef.current = actions)}
+                onSpendCredit={spendCredit}
+              />
+            }
           />
-        } />
 
         <Route path="/dashboard" element={
           <RequireUser>
