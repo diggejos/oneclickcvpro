@@ -32,7 +32,6 @@ import {
 
 const BACKEND_URL = (import.meta as any).env.VITE_BACKEND_URL || "";
 const STORAGE_KEY_USER = "oneclickcv_user";
-const [editorSessionKey, setEditorSessionKey] = useState(0);
 
 
 export interface EditorActions {
@@ -94,6 +93,8 @@ const App: React.FC = () => {
   const [isChatLoading, setIsChatLoading] = useState(false);
 
   const editorActionsRef = useRef<EditorActions | null>(null);
+  const [editorSessionKey, setEditorSessionKey] = useState(0);
+
 
   // Derive “view” from URL (instead of state)
   const path = location.pathname.replace(/\/+$/, "") || "/";
