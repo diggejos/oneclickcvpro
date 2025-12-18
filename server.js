@@ -438,7 +438,7 @@ app.post('/create-checkout-session', async (req, res) => {
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
       mode: 'payment',
-      success_url: `${CLIENT_URL}/?success=true`,
+      success_url: `${CLIENT_URL}/editor?success=true&t=${Date.now()}`,
       cancel_url: `${CLIENT_URL}/?canceled=true`,
       // Attach UserID to metadata so Webhook knows who to credit
       metadata: {
