@@ -124,36 +124,34 @@ const App: React.FC = () => {
     };
 
     const runVerification = async () => {
-       if (!user?.id) return;
+       if (!user?.id || !sessionId) return;
 
-       // A) Fast Path: Manual Verification (Retry up to 3 times)
-       if (sessionId) {
-          for (let i = 0; i < 3; i++) {
-            try {
-               console.log(`[Verify] Attempt ${i + 1} for session ${sessionId}`);
-               const res = await fetch(`${BACKEND_URL}/api/credits/verify-session?t=${Date.now()}`, {
-                 method: "POST",
-                 headers: { "Content-Type": "application/json", "x-user-id": user.id },
-                 body: JSON.stringify({ sessionId })
-               });
-               const data = await res.json();
-               
-               if (data.success && typeof data.credits === 'number') {
-                  updateCreditsInState(data.credits);
-                  window.history.replaceState({}, "", window.location.pathname);
-                  alert(`Payment Successful! Balance: ${data.credits} credits.`);
-                  return; // ✅ Success, exit function
-               } else {
-                 console.warn("Verify attempt failed:", data.message);
-               }
-            } catch(e) { console.error("Verify fetch error", e); }
-            
-            // Wait 1s between attempts if failed
-            await new Promise((r) => setTimeout(r, 1000));
-          }
+       // A) Fast Path: Manual Verification with Retry
+       // We try 3 times because sometimes the backend is waiting for the webhook
+       for (let i = 0; i < 3; i++) {
+          try {
+             console.log(`[Verify] Attempt ${i + 1} for session ${sessionId}`);
+             const res = await fetch(`${BACKEND_URL}/api/credits/verify-session?t=${Date.now()}`, {
+               method: "POST",
+               headers: { "Content-Type": "application/json", "x-user-id": user.id },
+               body: JSON.stringify({ sessionId })
+             });
+             const data = await res.json();
+             
+             if (data.success && typeof data.credits === 'number') {
+                updateCreditsInState(data.credits);
+                window.history.replaceState({}, "", window.location.pathname);
+                alert(`Payment Successful! Balance: ${data.credits} credits.`);
+                return; // ✅ Success, exit function
+             }
+          } catch(e) { console.error("Verify fetch error", e); }
+          
+          // Wait 1s between attempts
+          await new Promise((r) => setTimeout(r, 1000));
        }
 
        // B) Fallback: Aggressive Polling
+       // If manual verification logic failed or timed out, we fallback to just checking the user object repeatedly
        console.log("Falling back to polling...");
        const before = Number(user.credits || 0);
        let latest = before;
