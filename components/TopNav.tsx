@@ -71,10 +71,9 @@ export const TopNav: React.FC<Props> = ({
                   className="fill-indigo-500 group-hover:scale-110 transition-transform"
                 />
 
-                {/* ✅ Key forces re-render/animation on change */}
+                {/* ✅ No Key means no unmounting/blinking */}
                 <span 
-                  key={displayCredits} 
-                  className="text-xs sm:text-sm font-bold tabular-nums animate-pulse"
+                  className="text-xs sm:text-sm font-bold tabular-nums"
                 >
                   {displayCredits}
                 </span>
