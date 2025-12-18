@@ -304,26 +304,59 @@ const App: React.FC = () => {
   const handleChatSendMessage = async (text: string) => {
     setChatMessages((prev) => [...prev, { role: "user", text }]);
     setIsChatLoading(true);
+  
+    const withTimeout = async <T,>(p: Promise<T>, ms = 45000): Promise<T> => {
+      return await Promise.race([
+        p,
+        new Promise<T>((_, reject) =>
+          setTimeout(() => reject(new Error("Chat request timed out. Please try again.")), ms)
+        ),
+      ]);
+    };
+  
     try {
       const currentResumeData = editorActionsRef.current?.getResume() || null;
-      const history = chatMessages.map((m) => ({ role: m.role as "user" | "model", text: m.text }));
-      const result = await unifiedChatAgent(history, text, currentResumeData);
+  
+      // IMPORTANT: build history from latest state (avoid stale closure)
+      const history = ([
+        ...chatMessages,
+        { role: "user", text },
+      ] as any[]).map((m) => ({ role: m.role as "user" | "model", text: m.text }));
+  
+      const result = await withTimeout(
+        unifiedChatAgent(history, text, currentResumeData),
+        45000
+      );
+  
       setChatMessages((prev) => [
         ...prev,
         {
           role: "assistant",
           text: result.text,
           proposal: result.proposal
-            ? { data: result.proposal.data, description: result.proposal.description, status: "pending" }
+            ? {
+                data: result.proposal.data,
+                description: result.proposal.description,
+                status: "pending",
+              }
             : undefined,
         },
       ]);
-    } catch {
-      setChatMessages((prev) => [...prev, { role: "assistant", text: "Service unavailable." }]);
+  
+      // OPTIONAL: if a proposal arrives, auto-preview it (see section 2)
+      if (result.proposal?.data) {
+        editorActionsRef.current?.previewResume?.(result.proposal.data);
+      }
+    } catch (e: any) {
+      setChatMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: e?.message || "Service unavailable." },
+      ]);
     } finally {
       setIsChatLoading(false);
     }
   };
+
 
   const spendCredit = async (reason: string) => {
     if (!user) throw Object.assign(new Error("Not logged in"), { status: 401 });
