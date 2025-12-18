@@ -129,7 +129,6 @@ const App: React.FC = () => {
     const runVerification = async () => {
        if (!user?.id || !sessionId) return;
 
-       // A) Fast Path: Manual Verification with Retry
        for (let i = 0; i < 3; i++) {
           try {
              console.log(`[Verify] Attempt ${i + 1} for session ${sessionId}`);
@@ -356,7 +355,7 @@ const App: React.FC = () => {
         <Route path="/about" element={<AboutPage onBack={() => navigate(user ? "/dashboard" : "/editor")} />} />
         <Route path="/contact" element={<ContactPage onBack={() => navigate(user ? "/dashboard" : "/editor")} />} />
         
-        {/* ✅ UPDATED: Pricing Route with auth logic */}
+        {/* ✅ Pricing Route with auth logic */}
         <Route path="/pricing" element={
           <PricingPage 
             onBack={() => navigate(user ? "/dashboard" : "/editor")} 
@@ -373,7 +372,25 @@ const App: React.FC = () => {
         <Route path="/product/:type" element={<ProductPage type={subPage as ProductType} onBack={() => navigate(user ? "/dashboard" : "/editor")} onStart={() => navigate("/editor")} />} />
         <Route path="*" element={<Navigate to="/editor" replace />} />
       </Routes>
-      <GlobalChatAssistant messages={chatMessages} isOpen={isChatOpen} setIsOpen={setIsChatOpen} isLoading={isChatLoading} onSendMessage={handleChatSendMessage} onAcceptProposal={handleChatAcceptProposal} onDeclineProposal={handleChatDeclineProposal} hasActiveResume={path === "/editor" && !!editorActionsRef.current} />
+      
+      {/* ✅ UPDATED: Global Chat with Props */}
+      <GlobalChatAssistant 
+        messages={chatMessages} 
+        isOpen={isChatOpen} 
+        setIsOpen={setIsChatOpen} 
+        isLoading={isChatLoading} 
+        onSendMessage={handleChatSendMessage} 
+        onAcceptProposal={handleChatAcceptProposal} 
+        onDeclineProposal={handleChatDeclineProposal} 
+        hasActiveResume={path === "/editor" && !!editorActionsRef.current} 
+        
+        // New Props
+        isGuest={!user}
+        userCredits={user?.credits || 0}
+        onLogin={() => setShowAuthModal(true)}
+        onAddCredits={() => setShowPricingModal(true)}
+      />
+
       {showAuthModal && <AuthPage onLogin={handleLogin} isModal={true} onClose={() => setShowAuthModal(false)} />}
       {showPricingModal && user && <PricingModal onClose={() => setShowPricingModal(false)} currentCredits={user.credits} onPurchase={handleCreditsPurchased} userId={user.id} />}
     </>
