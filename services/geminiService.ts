@@ -286,6 +286,7 @@ interface UnifiedChatResult {
   text: string;
   proposal?: {
     data: ResumeData;
+    description: string; // ✅ ADD THIS
     metadata: {
       source: "ai";
       improvedSections: string[];
@@ -311,16 +312,18 @@ export async function unifiedChatAgent(
     // 🔵 Ask Gemini to modify the resume
     const result = await updateResumeWithChat(currentResumeData, text);
 
-    return {
-      text: "I’ve prepared a suggested change. Would you like to apply it?",
-      proposal: {
-        data: result.data,
-        metadata: {
-          source: "ai",
-          improvedSections: [],
-        },
+  return {
+    text: "I’ve prepared a suggested change. Would you like to apply it?",
+    proposal: {
+      data: result.data,
+      description: result.description, // ✅ THIS IS THE FIX
+      metadata: {
+        source: "ai",
+        improvedSections: [],
       },
-    };
+    },
+  };
+
   } catch (err: any) {
     const msg = String(err?.message || err);
 
