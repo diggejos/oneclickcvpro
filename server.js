@@ -78,6 +78,7 @@ app.get("/api/users/me", async (req, res) => {
     })();
     if (!userId) return res.status(400).json({ error: "Invalid user id" });
 
+    // Force fresh read
     const user = await User.findById(userId).select("email name avatar credits");
     if (!user) return res.status(404).json({ error: "User not found" });
 
@@ -410,7 +411,7 @@ app.post('/create-checkout-session', async (req, res) => {
   }
 });
 
-// --- MANUAL VERIFICATION ENDPOINT (Instant Refresh) ---
+// --- MANUAL VERIFICATION ENDPOINT (The "Instant Refresh") ---
 app.post('/api/credits/verify-session', async (req, res) => {
   const { sessionId } = req.body;
   const userIdRaw = req.headers['x-user-id'];
@@ -438,8 +439,10 @@ app.post('/api/credits/verify-session', async (req, res) => {
          console.log(`ℹ️ [Manual Verify] Session ${sessionId} already processed.`);
        }
 
-       // ✅ REFRESH: Fetch explicit fresh data to return
-       const freshUser = await User.findById(userIdRaw).select("credits");
+       // ✅ CRITICAL: Force a fresh database read of the credits to return.
+       // This ensures that even if the webhook beat us to it, we return the NEW high number.
+       const freshUser = await User.findById(userIdRaw).select("credits").lean();
+       
        return res.json({ success: true, credits: freshUser.credits });
     } else {
        return res.json({ success: false, message: "Payment not completed or pending" });
