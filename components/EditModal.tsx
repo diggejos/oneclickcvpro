@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { ResumeData } from "../types";
+import React, { useMemo, useState, useEffect } from "react";
+import { ResumeData, Experience, Education } from "../types";
 import { X, Save, Plus, Trash2, GripVertical } from "lucide-react";
 
 import {
@@ -46,7 +46,7 @@ function SortableCard({
   };
 
   return (
-    <div ref={setNodeRef} style={style} className={isDragging ? "ring-2 ring-indigo-300 rounded-lg" : ""}>
+    <div ref={setNodeRef} style={style} className={isDragging ? "ring-2 ring-indigo-300 rounded-lg bg-white z-50" : ""}>
       <div className="relative">
         {/* Drag handle */}
         <div
@@ -57,21 +57,29 @@ function SortableCard({
         >
           {handle}
         </div>
-
         {children}
       </div>
     </div>
   );
 }
 
-// stable-ish ids based on content + index (no DB ids available)
-const makeExpId = (exp: any, i: number) => `exp:${i}:${exp.role || ""}:${exp.company || ""}`;
-const makeEduId = (edu: any, i: number) => `edu:${i}:${edu.school || ""}:${edu.degree || ""}`;
-
 export const EditModal: React.FC<EditModalProps> = ({ data, onSave, onClose }) => {
-  const [formData, setFormData] = useState<ResumeData>(
-    JSON.parse(JSON.stringify(data))
-  );
+  // ✅ Initialize with IDs if missing to prevent focus loss
+  const [formData, setFormData] = useState<ResumeData>(() => {
+    const init = JSON.parse(JSON.stringify(data));
+    
+    // Ensure all items have IDs
+    init.experience = init.experience.map((e: any) => ({
+      ...e,
+      id: e.id || crypto.randomUUID()
+    }));
+    init.education = init.education.map((e: any) => ({
+      ...e,
+      id: e.id || crypto.randomUUID()
+    }));
+    
+    return init;
+  });
 
   const handleSave = () => {
     onSave(formData);
@@ -79,7 +87,7 @@ export const EditModal: React.FC<EditModalProps> = ({ data, onSave, onClose }) =
   };
 
   // ---------- Experience helpers ----------
-  const updateExperience = (idx: number, field: string, value: any) => {
+  const updateExperience = (idx: number, field: keyof Experience, value: any) => {
     const newExp = [...formData.experience];
     newExp[idx] = { ...newExp[idx], [field]: value };
     setFormData({ ...formData, experience: newExp });
@@ -104,46 +112,47 @@ export const EditModal: React.FC<EditModalProps> = ({ data, onSave, onClose }) =
   };
 
   const addExperienceRole = () => {
-    const newExp = [
-      ...formData.experience,
-      {
-        role: "New Role",
-        company: "Company",
-        website: "",
-        duration: "",
-        points: ["New achievement..."],
-      },
-    ];
-    setFormData({ ...formData, experience: newExp });
+    const newExp: Experience = {
+      id: crypto.randomUUID(), // ✅ Stable ID
+      role: "New Role",
+      company: "Company",
+      website: "",
+      duration: "",
+      points: ["New achievement..."],
+      additionalInfo: ""
+    };
+    setFormData({ ...formData, experience: [newExp, ...formData.experience] }); // Add to top
   };
 
   const removeExperienceRole = (idx: number) => {
+    if(!window.confirm("Delete this role?")) return;
     const newExp = [...formData.experience];
     newExp.splice(idx, 1);
     setFormData({ ...formData, experience: newExp });
   };
 
   // ---------- Education helpers ----------
-  const updateEducation = (idx: number, field: string, value: any) => {
+  const updateEducation = (idx: number, field: keyof Education, value: any) => {
     const newEdu = [...formData.education];
     newEdu[idx] = { ...newEdu[idx], [field]: value };
     setFormData({ ...formData, education: newEdu });
   };
 
   const addEducation = () => {
-    const newEdu = [
-      ...formData.education,
-      {
-        school: "New School",
-        degree: "Degree",
-        website: "",
-        year: "",
-      },
-    ];
-    setFormData({ ...formData, education: newEdu });
+    const newEdu: Education = {
+      id: crypto.randomUUID(), // ✅ Stable ID
+      school: "New School",
+      degree: "Degree",
+      website: "",
+      year: "",
+      grade: "",
+      additionalInfo: ""
+    };
+    setFormData({ ...formData, education: [newEdu, ...formData.education] });
   };
 
   const removeEducation = (idx: number) => {
+    if(!window.confirm("Delete this education?")) return;
     const newEdu = [...formData.education];
     newEdu.splice(idx, 1);
     setFormData({ ...formData, education: newEdu });
@@ -151,26 +160,20 @@ export const EditModal: React.FC<EditModalProps> = ({ data, onSave, onClose }) =
 
   // ---------- DnD setup ----------
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // compute ids from current arrays (keeps SortableContext happy)
-  const expIds = useMemo(
-    () => formData.experience.map((e, i) => makeExpId(e, i)),
-    [formData.experience]
-  );
-  const eduIds = useMemo(
-    () => formData.education.map((e, i) => makeEduId(e, i)),
-    [formData.education]
-  );
+  const expIds = useMemo(() => formData.experience.map(e => e.id), [formData.experience]);
+  const eduIds = useMemo(() => formData.education.map(e => e.id), [formData.education]);
 
   const onDragEndExperience = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const oldIndex = expIds.indexOf(String(active.id));
-    const newIndex = expIds.indexOf(String(over.id));
+    const oldIndex = formData.experience.findIndex(e => e.id === active.id);
+    const newIndex = formData.experience.findIndex(e => e.id === over.id);
+    
     if (oldIndex < 0 || newIndex < 0) return;
 
     const reordered = arrayMove(formData.experience, oldIndex, newIndex);
@@ -181,8 +184,9 @@ export const EditModal: React.FC<EditModalProps> = ({ data, onSave, onClose }) =
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const oldIndex = eduIds.indexOf(String(active.id));
-    const newIndex = eduIds.indexOf(String(over.id));
+    const oldIndex = formData.education.findIndex(e => e.id === active.id);
+    const newIndex = formData.education.findIndex(e => e.id === over.id);
+
     if (oldIndex < 0 || newIndex < 0) return;
 
     const reordered = arrayMove(formData.education, oldIndex, newIndex);
@@ -207,7 +211,7 @@ export const EditModal: React.FC<EditModalProps> = ({ data, onSave, onClose }) =
             <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider border-b pb-1">
               Personal Info
             </h3>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-semibold text-slate-600">Full Name</label>
                 <input
@@ -224,7 +228,7 @@ export const EditModal: React.FC<EditModalProps> = ({ data, onSave, onClose }) =
                   onChange={(e) => setFormData({ ...formData, location: e.target.value })}
                 />
               </div>
-              <div className="col-span-2">
+              <div className="md:col-span-2">
                 <label className="text-xs font-semibold text-slate-600">Contact Info</label>
                 <input
                   className="w-full p-2 text-sm border border-slate-300 rounded bg-white text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none"
@@ -281,98 +285,98 @@ export const EditModal: React.FC<EditModalProps> = ({ data, onSave, onClose }) =
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEndExperience}>
               <SortableContext items={expIds} strategy={verticalListSortingStrategy}>
                 <div className="space-y-4">
-                  {formData.experience.map((exp, i) => {
-                    const id = makeExpId(exp, i);
-                    return (
-                      <SortableCard
-                        key={id}
-                        id={id}
-                        handle={
+                  {formData.experience.map((exp, i) => (
+                    <SortableCard
+                      key={exp.id} // ✅ Using ID for key
+                      id={exp.id}
+                      handle={
+                        <button
+                          type="button"
+                          className="cursor-grab active:cursor-grabbing bg-white border border-slate-200 rounded-lg p-2 text-slate-500 shadow-sm hover:bg-slate-50"
+                        >
+                          <GripVertical size={16} />
+                        </button>
+                      }
+                    >
+                      <div className="p-4 bg-white rounded-lg border border-slate-200 space-y-3 shadow-sm pl-10">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 flex-grow">
+                            <input
+                              className="p-2 text-sm font-bold border border-slate-300 rounded bg-white text-slate-900"
+                              value={exp.role}
+                              onChange={(e) => updateExperience(i, "role", e.target.value)}
+                              placeholder="Role"
+                            />
+                            <input
+                              className="p-2 text-sm border border-slate-300 rounded bg-white text-slate-900"
+                              value={exp.company}
+                              onChange={(e) => updateExperience(i, "company", e.target.value)}
+                              placeholder="Company"
+                            />
+                            <input
+                              className="p-2 text-xs border border-slate-300 rounded bg-white text-slate-900"
+                              value={exp.duration}
+                              onChange={(e) => updateExperience(i, "duration", e.target.value)}
+                              placeholder="Duration"
+                            />
+                            <input
+                              className="p-2 text-xs border border-slate-300 rounded bg-white text-slate-900"
+                              value={exp.website || ""}
+                              onChange={(e) => updateExperience(i, "website", e.target.value)}
+                              placeholder="Website for Logo"
+                            />
+                            {/* ✅ New Field */}
+                            <input
+                              className="p-2 text-xs border border-slate-300 rounded bg-white text-slate-900 md:col-span-2"
+                              value={exp.additionalInfo || ""}
+                              onChange={(e) => updateExperience(i, "additionalInfo", e.target.value)}
+                              placeholder="Additional Info (Optional)"
+                            />
+                          </div>
+
                           <button
+                            onClick={() => removeExperienceRole(i)}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg border border-slate-200"
+                            title="Delete role"
                             type="button"
-                            className="cursor-grab active:cursor-grabbing bg-white border border-slate-200 rounded-lg p-2 text-slate-500 shadow-sm hover:bg-slate-50"
                           >
-                            <GripVertical size={16} />
+                            <Trash2 size={16} />
                           </button>
-                        }
-                      >
-                        <div className="p-4 bg-white rounded-lg border border-slate-200 space-y-3 shadow-sm pl-10">
-                          <div className="flex justify-between items-start gap-2">
-                            <div className="grid grid-cols-2 gap-3 flex-grow">
-                              <input
-                                className="p-2 text-sm font-bold border border-slate-300 rounded bg-white text-slate-900"
-                                value={exp.role}
-                                onChange={(e) => updateExperience(i, "role", e.target.value)}
-                                placeholder="Role"
-                              />
-                              <input
-                                className="p-2 text-sm border border-slate-300 rounded bg-white text-slate-900"
-                                value={exp.company}
-                                onChange={(e) => updateExperience(i, "company", e.target.value)}
-                                placeholder="Company"
-                              />
-                              <input
-                                className="p-2 text-xs border border-slate-300 rounded bg-white text-slate-900"
-                                value={exp.duration}
-                                onChange={(e) => updateExperience(i, "duration", e.target.value)}
-                                placeholder="Duration"
-                              />
-                              <input
-                                className="p-2 text-xs border border-slate-300 rounded bg-white text-slate-900"
-                                value={exp.website || ""}
-                                onChange={(e) => updateExperience(i, "website", e.target.value)}
-                                placeholder="Website (domain.com) for Logo"
-                              />
-                            </div>
-
-                            <button
-                              onClick={() => removeExperienceRole(i)}
-                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg border border-slate-200"
-                              title="Delete role"
-                              type="button"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-
-                          <div className="space-y-2 pl-2">
-                            <label className="text-xs font-semibold text-slate-500">Bullet Points</label>
-                            {exp.points.map((point, pIdx) => (
-                              <div key={pIdx} className="flex gap-2">
-                                <input
-                                  className="flex-grow p-1.5 text-xs border border-slate-300 rounded bg-white text-slate-900"
-                                  value={point}
-                                  onChange={(e) => updateExpPoint(i, pIdx, e.target.value)}
-                                />
-                                <button
-                                  onClick={() => removeExpPoint(i, pIdx)}
-                                  className="text-red-400 hover:text-red-600"
-                                  type="button"
-                                  title="Delete bullet"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
-                            ))}
-                            <button
-                              onClick={() => addExpPoint(i)}
-                              className="text-xs text-indigo-600 flex items-center gap-1 hover:underline mt-2"
-                              type="button"
-                            >
-                              <Plus size={12} /> Add bullet
-                            </button>
-                          </div>
                         </div>
-                      </SortableCard>
-                    );
-                  })}
+
+                        <div className="space-y-2 pl-2">
+                          <label className="text-xs font-semibold text-slate-500">Bullet Points</label>
+                          {exp.points.map((point, pIdx) => (
+                            <div key={pIdx} className="flex gap-2">
+                              <input
+                                className="flex-grow p-1.5 text-xs border border-slate-300 rounded bg-white text-slate-900"
+                                value={point}
+                                onChange={(e) => updateExpPoint(i, pIdx, e.target.value)}
+                              />
+                              <button
+                                onClick={() => removeExpPoint(i, pIdx)}
+                                className="text-red-400 hover:text-red-600"
+                                type="button"
+                                title="Delete bullet"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            onClick={() => addExpPoint(i)}
+                            className="text-xs text-indigo-600 flex items-center gap-1 hover:underline mt-2"
+                            type="button"
+                          >
+                            <Plus size={12} /> Add bullet
+                          </button>
+                        </div>
+                      </div>
+                    </SortableCard>
+                  ))}
                 </div>
               </SortableContext>
             </DndContext>
-
-            <p className="text-[10px] text-slate-400">
-              Tip: Drag the handle to reorder roles.
-            </p>
           </section>
 
           {/* Education (sortable) */}
@@ -391,70 +395,76 @@ export const EditModal: React.FC<EditModalProps> = ({ data, onSave, onClose }) =
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEndEducation}>
               <SortableContext items={eduIds} strategy={verticalListSortingStrategy}>
                 <div className="space-y-4">
-                  {formData.education.map((edu, i) => {
-                    const id = makeEduId(edu, i);
-                    return (
-                      <SortableCard
-                        key={id}
-                        id={id}
-                        handle={
-                          <button
-                            type="button"
-                            className="cursor-grab active:cursor-grabbing bg-white border border-slate-200 rounded-lg p-2 text-slate-500 shadow-sm hover:bg-slate-50"
-                          >
-                            <GripVertical size={16} />
-                          </button>
-                        }
-                      >
-                        <div className="p-4 bg-white rounded-lg border border-slate-200 space-y-3 shadow-sm pl-10">
-                          <div className="flex justify-between items-start gap-2">
-                            <div className="grid grid-cols-2 gap-3 flex-grow">
-                              <input
-                                className="p-2 text-sm font-bold border border-slate-300 rounded bg-white text-slate-900"
-                                value={edu.school}
-                                onChange={(e) => updateEducation(i, "school", e.target.value)}
-                                placeholder="School"
-                              />
-                              <input
-                                className="p-2 text-sm border border-slate-300 rounded bg-white text-slate-900"
-                                value={edu.degree}
-                                onChange={(e) => updateEducation(i, "degree", e.target.value)}
-                                placeholder="Degree"
-                              />
-                              <input
-                                className="p-2 text-xs border border-slate-300 rounded bg-white text-slate-900"
-                                value={edu.year}
-                                onChange={(e) => updateEducation(i, "year", e.target.value)}
-                                placeholder="Year"
-                              />
-                              <input
-                                className="p-2 text-xs border border-slate-300 rounded bg-white text-slate-900"
-                                value={edu.website || ""}
-                                onChange={(e) => updateEducation(i, "website", e.target.value)}
-                                placeholder="Website (domain.edu) for Logo"
-                              />
-                            </div>
-
-                            <button
-                              onClick={() => removeEducation(i)}
-                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg border border-slate-200"
-                              title="Delete education"
-                              type="button"
-                            >
-                              <Trash2 size={16} />
-                            </button>
+                  {formData.education.map((edu, i) => (
+                    <SortableCard
+                      key={edu.id} // ✅ Stable Key
+                      id={edu.id}
+                      handle={
+                        <button
+                          type="button"
+                          className="cursor-grab active:cursor-grabbing bg-white border border-slate-200 rounded-lg p-2 text-slate-500 shadow-sm hover:bg-slate-50"
+                        >
+                          <GripVertical size={16} />
+                        </button>
+                      }
+                    >
+                      <div className="p-4 bg-white rounded-lg border border-slate-200 space-y-3 shadow-sm pl-10">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 flex-grow">
+                            <input
+                              className="p-2 text-sm font-bold border border-slate-300 rounded bg-white text-slate-900"
+                              value={edu.school}
+                              onChange={(e) => updateEducation(i, "school", e.target.value)}
+                              placeholder="School"
+                            />
+                            <input
+                              className="p-2 text-sm border border-slate-300 rounded bg-white text-slate-900"
+                              value={edu.degree}
+                              onChange={(e) => updateEducation(i, "degree", e.target.value)}
+                              placeholder="Degree"
+                            />
+                            <input
+                              className="p-2 text-xs border border-slate-300 rounded bg-white text-slate-900"
+                              value={edu.year}
+                              onChange={(e) => updateEducation(i, "year", e.target.value)}
+                              placeholder="Year"
+                            />
+                            <input
+                              className="p-2 text-xs border border-slate-300 rounded bg-white text-slate-900"
+                              value={edu.website || ""}
+                              onChange={(e) => updateEducation(i, "website", e.target.value)}
+                              placeholder="Website"
+                            />
+                            {/* ✅ New Fields */}
+                            <input
+                              className="p-2 text-xs border border-slate-300 rounded bg-white text-slate-900"
+                              value={edu.grade || ""}
+                              onChange={(e) => updateEducation(i, "grade", e.target.value)}
+                              placeholder="Grade (Optional)"
+                            />
+                            <input
+                              className="p-2 text-xs border border-slate-300 rounded bg-white text-slate-900"
+                              value={edu.additionalInfo || ""}
+                              onChange={(e) => updateEducation(i, "additionalInfo", e.target.value)}
+                              placeholder="Additional Info (Optional)"
+                            />
                           </div>
+
+                          <button
+                            onClick={() => removeEducation(i)}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg border border-slate-200"
+                            title="Delete education"
+                            type="button"
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         </div>
-                      </SortableCard>
-                    );
-                  })}
+                      </div>
+                    </SortableCard>
+                  ))}
                 </div>
               </SortableContext>
             </DndContext>
-
-            <p className="text-[10px] text-slate-400">
-              Tip: Drag the handle to reorder schools.
-            </p>
           </section>
         </div>
 
