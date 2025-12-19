@@ -2,7 +2,7 @@ import React, { useMemo, useEffect, useRef, useState } from 'react';
 import { ResumeData, TemplateId, Experience, Education, ResumeLanguage } from '../types';
 import { MapPin, Sparkles } from 'lucide-react';
 
-// ✅ TRANSLATIONS DEFINED HERE TO BE SAFE
+// ✅ Translation Map
 export const SECTION_TITLES: Record<string, Record<string, string>> = {
   "Professional Summary": { English: "Professional Summary", German: "Profil", French: "Profil Professionnel", Spanish: "Perfil Profesional", Italian: "Profilo Professionale", Portuguese: "Resumo Profissional" },
   "Experience": { English: "Experience", German: "Berufserfahrung", French: "Expérience", Spanish: "Experiencia", Italian: "Esperienza", Portuguese: "Experiência" },
@@ -98,7 +98,7 @@ const RoleDetails: React.FC<{ exp: Experience; isGrouped?: boolean }> = ({ exp, 
     </div>
     {!isGrouped && <div className="text-sm text-slate-600 italic mb-2 font-medium">{exp.company}</div>}
     
-    {/* ✅ NEW: Additional Info */}
+    {/* Additional Info */}
     {exp.additionalInfo && <div className="text-xs text-slate-500 mb-1 italic">{exp.additionalInfo}</div>}
 
     <ul className="list-disc list-outside ml-4 space-y-1">
@@ -160,7 +160,7 @@ const EducationItem: React.FC<{ edu: Education; showLogos: boolean; compact?: bo
                </div>
                <span className="text-xs text-slate-500 font-medium">{edu.year}</span>
              </div>
-             {/* ✅ NEW: Grade & Additional Info */}
+             {/* Grade & Additional Info */}
              <div className="flex gap-3 mt-1 text-xs text-slate-500">
                 {edu.grade && <span className="font-medium text-indigo-600">Grade: {edu.grade}</span>}
                 {edu.additionalInfo && <span className="italic">{edu.additionalInfo}</span>}
@@ -180,7 +180,7 @@ export const ResumePreview: React.FC<ResumePreviewProps> = ({ data, baseData, is
   const isSummaryChanged = () => !isTailored || !baseData ? false : data.summary !== baseData.summary;
   const hasPhoto = !!data.profileImage;
 
-  // ✅ MOBILE SCALING FIX
+  // Mobile Scaling Logic
   const containerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
 
@@ -203,8 +203,7 @@ export const ResumePreview: React.FC<ResumePreviewProps> = ({ data, baseData, is
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // --- TEMPLATES ---
-
+  // --- TEMPLATE: CLASSIC ---
   const renderClassic = () => (
     <>
        <header className="border-b-2 border-slate-800 pb-6 mb-6 flex gap-6 items-start break-inside-avoid">
@@ -251,6 +250,7 @@ export const ResumePreview: React.FC<ResumePreviewProps> = ({ data, baseData, is
     </>
   );
 
+  // --- TEMPLATE: MODERN ---
   const renderModern = () => (
     <div className="flex flex-col md:flex-row gap-8 print:flex-row">
       <aside className="w-full md:w-1/3 print:w-1/3 border-r border-slate-200 pr-6 flex flex-col gap-8">
@@ -311,6 +311,7 @@ export const ResumePreview: React.FC<ResumePreviewProps> = ({ data, baseData, is
     </div>
   );
 
+  // --- TEMPLATE: MINIMAL ---
   const renderMinimal = () => (
     <div className="font-serif text-slate-800">
       <header className="text-center border-b border-slate-300 pb-8 mb-8 break-inside-avoid">
@@ -378,4 +379,32 @@ export const ResumePreview: React.FC<ResumePreviewProps> = ({ data, baseData, is
          <div>
             <h2 className="text-xs font-bold font-sans uppercase tracking-widest text-slate-400 mb-4">{getTitle("Education", language)}</h2>
             {data.education && data.education.map((edu, idx) => (
-               <div key={
+               <div key={edu.id || idx} className="mb-3 flex gap-3">
+                   {showLogos && <LogoBox website={edu.website} showLogos={true} fallback={edu.school} />}
+                   <div>
+                     <div className="font-bold text-sm">{edu.school}</div>
+                     <div className="text-sm italic text-slate-600">{edu.degree}</div>
+                     <div className="text-xs text-slate-400 font-sans mt-1">{edu.year}</div>
+                     {edu.grade && <div className="text-xs text-indigo-600 font-medium">Grade: {edu.grade}</div>}
+                   </div>
+               </div>
+            ))}
+         </div>
+         <div>
+            <h2 className="text-xs font-bold font-sans uppercase tracking-widest text-slate-400 mb-4">{getTitle("Skills", language)}</h2>
+            <div className="text-sm leading-loose">{data.skills.join(" • ")}</div>
+         </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div ref={containerRef} className="flex justify-center origin-top-left" style={{ transform: `scale(${scale})`, transformOrigin: 'top center', marginBottom: `-${(1 - scale) * 100}%` }}>
+      <div id="resume-preview-content" className="resume-preview-container w-[210mm] min-h-[297mm] bg-white shadow-2xl p-10 text-slate-800">
+        {template === 'modern' && renderModern()}
+        {template === 'minimal' && renderMinimal()}
+        {template === 'classic' && renderClassic()}
+      </div>
+    </div>
+  );
+};
