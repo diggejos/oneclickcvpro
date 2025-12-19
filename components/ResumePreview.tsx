@@ -1,7 +1,15 @@
 import React, { useMemo, useEffect, useRef, useState } from 'react';
 import { ResumeData, TemplateId, Experience, Education, ResumeLanguage } from '../types';
 import { MapPin, Sparkles } from 'lucide-react';
-import { SECTION_TITLES } from './Editor';
+
+// ✅ TRANSLATION MAP (Moved here to avoid circular dependency)
+export const SECTION_TITLES: Record<string, Record<string, string>> = {
+  "Professional Summary": { English: "Professional Summary", German: "Profil", French: "Profil Professionnel", Spanish: "Perfil Profesional", Italian: "Profilo Professionale", Portuguese: "Resumo Profissional" },
+  "Experience": { English: "Experience", German: "Berufserfahrung", French: "Expérience", Spanish: "Experiencia", Italian: "Esperienza", Portuguese: "Experiência" },
+  "Education": { English: "Education", German: "Ausbildung", French: "Formation", Spanish: "Educación", Italian: "Istruzione", Portuguese: "Educação" },
+  "Core Competencies": { English: "Core Competencies", German: "Kernkompetenzen", French: "Compétences Clés", Spanish: "Competencias Básicas", Italian: "Competenze Chiave", Portuguese: "Competências Essenciais" },
+  "Contact": { English: "Contact", German: "Kontakt", French: "Contact", Spanish: "Contacto", Italian: "Contatto", Portuguese: "Contato" },
+};
 
 interface ResumePreviewProps {
   data: ResumeData;
@@ -9,7 +17,7 @@ interface ResumePreviewProps {
   isTailored?: boolean;
   template: TemplateId;
   showLogos: boolean;
-  language?: ResumeLanguage; // ✅ Added
+  language?: ResumeLanguage; // ✅ Accepts language prop
 }
 
 // ✅ Translation helper
@@ -27,6 +35,7 @@ interface ExperienceGroup {
 const groupExperience = (experience: Experience[]): ExperienceGroup[] => {
   const groups: ExperienceGroup[] = [];
   if (!experience || experience.length === 0) return groups;
+
   let i = 0;
   while (i < experience.length) {
     const current = experience[i];
@@ -156,9 +165,12 @@ export const ResumePreview: React.FC<ResumePreviewProps> = ({ data, baseData, is
     const handleResize = () => {
       if (!containerRef.current) return;
       const parentWidth = containerRef.current.parentElement?.clientWidth || window.innerWidth;
+      // A4 is ~794px at 96 DPI.
       const baseWidth = 794; 
       const padding = 32; 
       const available = parentWidth - padding;
+      
+      // If screen is smaller than A4, scale down. Otherwise 100%.
       setScale(available < baseWidth ? available / baseWidth : 1);
     };
     window.addEventListener('resize', handleResize);
