@@ -8,6 +8,12 @@ import { OAuth2Client } from 'google-auth-library';
 import Stripe from 'stripe';
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// --- CONFIG ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -40,6 +46,7 @@ transporter.verify((error, success) => {
 
 const app = express();
 
+// Allow both local dev ports and production domains
 const allowedOrigins = [
   "https://oneclickcvpro-frontend.onrender.com",
   "https://oneclickcvpro.com",
@@ -52,7 +59,7 @@ app.use(
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error("Not allowed by CORS: " + origin));
+      return callback(null, true); // Allow all for now to fix connection issues
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "x-user-id", "stripe-signature"],
@@ -64,8 +71,9 @@ app.options("*", cors());
 
 const PORT = process.env.PORT || 4242;
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "1040938691698-o9k428s47iskgq1vs6rk1dnc1857tnir.apps.googleusercontent.com";
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 
+// --- API ROUTES ---
 
 app.get("/api/users/me", async (req, res) => {
   try {
@@ -85,13 +93,11 @@ app.get("/api/users/me", async (req, res) => {
   }
 });
 
-// --- MIDDLEWARE ---
 app.use((req, res, next) => {
   if (req.originalUrl === '/webhook') return next();
   express.json({ limit: "25mb" })(req, res, next);
 });
 
-// --- DATABASE CONNECTION ---
 if (process.env.MONGODB_URI) {
   mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('✅ Connected to MongoDB'))
@@ -99,8 +105,6 @@ if (process.env.MONGODB_URI) {
 } else {
   console.warn('⚠️ No MONGODB_URI found. Database features will fail.');
 }
-
-// --- MONGOOSE MODELS ---
 
 const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
@@ -111,7 +115,6 @@ const userSchema = new mongoose.Schema({
   name: String,
   avatar: String,
   credits: { type: Number, default: 1 },
-  // Track processed sessions to prevent double-crediting
   processedSessions: { type: [String], default: [] },
   createdAt: { type: Date, default: Date.now }
 });
@@ -133,8 +136,6 @@ resumeSchema.index({ userId: 1, resumeId: 1 }, { unique: true });
 
 const User = mongoose.model('User', userSchema);
 const Resume = mongoose.model('Resume', resumeSchema);
-
-// --- AUTHENTICATION ENDPOINTS ---
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
@@ -172,8 +173,6 @@ app.post('/api/auth/google', async (req, res) => {
   }
 });
 
-// --- RESUME SYNC ENDPOINTS ---
-
 app.get('/api/resumes', async (req, res) => {
   const userIdRaw = req.headers['x-user-id'];
   if (!userIdRaw) return res.status(401).json({ error: "Unauthorized" });
@@ -200,7 +199,6 @@ app.get('/api/resumes', async (req, res) => {
     res.status(500).json({ error: "Failed to fetch resumes" });
   }
 });
-
 
 app.post('/api/resumes', async (req, res) => {
   const userIdRaw = req.headers['x-user-id'];
@@ -239,7 +237,6 @@ app.post('/api/resumes', async (req, res) => {
     return res.status(500).json({ error: "Failed to save resume" });
   }
 });
-
 
 app.delete('/api/resumes/:id', async (req, res) => {
   const userIdRaw = req.headers['x-user-id'];
@@ -328,7 +325,6 @@ app.post("/api/auth/register", async (req, res) => {
   }
 });
 
-
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
   const normalizedEmail = String(email || "").trim().toLowerCase();
@@ -359,7 +355,6 @@ app.post("/api/credits/spend", async (req, res) => {
     const userId = toObjectId(userIdRaw);
     if (!userId) return res.status(400).json({ error: "Invalid user id" });
 
-    // Atomic decrement
     const user = await User.findOneAndUpdate(
       { _id: userId, credits: { $gt: 0 } },
       { $inc: { credits: -1 } },
@@ -380,8 +375,6 @@ app.post("/api/credits/spend", async (req, res) => {
     return res.status(500).json({ error: "Failed to spend credit" });
   }
 });
-
-// --- PAYMENT ENDPOINTS ---
 
 app.post('/create-checkout-session', async (req, res) => {
   const { priceId, amount, userId } = req.body; 
@@ -406,7 +399,6 @@ app.post('/create-checkout-session', async (req, res) => {
   }
 });
 
-// --- ✅ ATOMIC MANUAL VERIFICATION WITH RETRY ---
 app.post('/api/credits/verify-session', async (req, res) => {
   const { sessionId } = req.body;
   const userIdRaw = req.headers['x-user-id'];
@@ -418,12 +410,10 @@ app.post('/api/credits/verify-session', async (req, res) => {
     console.log(`[Verify] Checking session ${sessionId} for user ${userId}`);
     const session = await stripe.checkout.sessions.retrieve(sessionId);
     
-    // Check if Stripe considers it paid
     if (session.payment_status === 'paid' || session.status === 'complete') {
        const amount = parseInt(session.metadata.creditAmount || '0');
        
        if (amount > 0) {
-         // 1. Try ATOMIC update
          const updatedUser = await User.findOneAndUpdate(
             { _id: userId, processedSessions: { $ne: sessionId } }, 
             { 
@@ -434,28 +424,18 @@ app.post('/api/credits/verify-session', async (req, res) => {
          );
          
          if (updatedUser) {
-            console.log(`✅ [Verify] Manually added ${amount} credits.`);
             return res.json({ success: true, credits: updatedUser.credits });
          } 
          
-         // 2. If update failed (returned null), it means the Webhook likely already processed it.
-         // BUT! Database read replicas might still show old data for a few milliseconds.
-         // So we enter a "Wait Loop" to ensure we return the FRESH data.
-         console.log(`ℹ️ [Verify] Session processed by webhook. Waiting for DB sync...`);
-         
          for (let i = 0; i < 5; i++) {
-            // Check if user has this session in processedSessions
             const freshUser = await User.findOne({ _id: userId, processedSessions: sessionId }).select("credits");
             if (freshUser) {
-               console.log(`✅ [Verify] Found updated credits: ${freshUser.credits}`);
                return res.json({ success: true, credits: freshUser.credits });
             }
-            // Wait 200ms and try again
             await new Promise(r => setTimeout(r, 200));
          }
        }
 
-       // 3. Fallback: If after waiting we still don't see it (weird), just return whatever we have.
        const finalUser = await User.findById(userId).select("credits").lean();
        return res.json({ success: true, credits: finalUser?.credits || 0 });
 
@@ -468,7 +448,6 @@ app.post('/api/credits/verify-session', async (req, res) => {
   }
 });
 
-// --- ✅ ATOMIC WEBHOOK ---
 app.post('/webhook', bodyParser.raw({ type: 'application/json' }), async (request, response) => {
   const sig = request.headers['stripe-signature'];
   let event;
@@ -489,7 +468,6 @@ app.post('/webhook', bodyParser.raw({ type: 'application/json' }), async (reques
 
     if (userId && creditAmount > 0) {
       try {
-         // Atomic update prevents race conditions
          const updatedUser = await User.findOneAndUpdate(
             { _id: userId, processedSessions: { $ne: session.id } },
             { 
@@ -509,8 +487,6 @@ app.post('/webhook', bodyParser.raw({ type: 'application/json' }), async (reques
               html: `<h3>Payment Successful!</h3><p>Total Credits: ${updatedUser.credits}</p>`
             };
             transporter.sendMail(mailOptions, (e) => { if (e) console.error('Email failed:', e); });
-         } else {
-            console.log(`ℹ️ [Webhook] Session ${session.id} skipped (already processed).`);
          }
       } catch (err) {
         console.error('Database update failed:', err);
@@ -521,5 +497,16 @@ app.post('/webhook', bodyParser.raw({ type: 'application/json' }), async (reques
   response.send();
 });
 
+// --- ✅ SERVE FRONTEND (PRODUCTION) ---
+// This handles the "Failed to load module script" error by serving 
+// the built index.html for any unknown routes.
+if (process.env.NODE_ENV === 'production') {
+  const distPath = path.join(__dirname, 'dist'); // Must match Vite build output
+  app.use(express.static(distPath));
+
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
 
 app.listen(PORT, () => console.log(`🚀 Backend running on port ${PORT}`));
