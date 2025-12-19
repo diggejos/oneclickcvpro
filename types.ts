@@ -1,29 +1,32 @@
-
-
 export interface Experience {
+  id: string; // ✅ Added for stable keys (fixes focus bug)
   role: string;
   company: string;
-  website?: string; // Domain for logo fetching
+  website?: string;
   duration: string;
   points: string[];
+  additionalInfo?: string; // ✅ Added
 }
 
 export interface Education {
+  id: string; // ✅ Added for stable keys
   degree: string;
   school: string;
-  website?: string; // Domain for logo fetching
+  website?: string;
   year: string;
+  grade?: string; // ✅ Added
+  additionalInfo?: string; // ✅ Added
 }
 
 export interface ResumeData {
   fullName: string;
-  contactInfo: string; // Email | Phone | LinkedIn
+  contactInfo: string;
   location: string;
   summary: string;
   skills: string[];
   experience: Experience[];
   education: Education[];
-  profileImage?: string; // Base64 string
+  profileImage?: string;
 }
 
 export enum AppState {
@@ -44,7 +47,7 @@ export interface ResumeConfig {
   length: ResumeLength;
   tone: ResumeTone;
   template: TemplateId;
-  refinementLevel: number; // 0 to 100
+  refinementLevel: number;
   showLogos: boolean;
   language: ResumeLanguage;
 }
@@ -63,7 +66,7 @@ export interface ChatMessage {
 
 export interface FileInput {
   type: 'text' | 'file';
-  content: string; // Text content or Base64 string
+  content: string;
   mimeType?: string;
   fileName?: string;
 }
@@ -75,7 +78,7 @@ export interface User {
   email: string;
   name: string;
   avatar?: string;
-  credits: number; // For Freemium Model
+  credits: number;
 }
 
 export interface SavedResume {
@@ -83,7 +86,6 @@ export interface SavedResume {
   title: string;
   lastModified: number;
   
-  // State required to restore the editor
   baseResumeInput: FileInput;
   jobDescriptionInput: FileInput;
   baseResumeData: ResumeData | null;
@@ -98,7 +100,7 @@ export interface BlogPost {
   id: string;
   title: string;
   excerpt: string;
-  content: string; // Markdown or HTML string
+  content: string;
   date: string;
   author: string;
   image: string;
