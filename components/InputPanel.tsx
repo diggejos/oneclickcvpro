@@ -12,7 +12,7 @@ interface InputPanelProps {
   setJobDescriptionInput: (val: FileInput) => void;
   onGenerateBase: () => void;
   onGenerateTailored: () => void;
-  onStartFromScratch: () => void; // ✅ New Prop
+  onStartFromScratch: () => void;
   onPrint: (singlePage: boolean) => void;
   appState: AppState;
   resetBase: () => void;
@@ -204,7 +204,8 @@ export const InputPanel: React.FC<InputPanelProps> = ({
                   }`}
               >
                 {isGeneratingBase ? <RotateCcw className="animate-spin" size={14} /> : <CheckCircle2 size={14} />}
-                {isGeneratingBase ? 'Analyzing Content...' : 'Analyze & Create Base Resume'}
+                <span className="md:hidden">Analyze</span>
+                <span className="hidden md:inline">{isGeneratingBase ? 'Analyzing Content...' : 'Analyze & Create Base Resume'}</span>
               </button>
 
               {/* ✅ NEW: Manual Entry Option */}
@@ -214,7 +215,9 @@ export const InputPanel: React.FC<InputPanelProps> = ({
                   onClick={onStartFromScratch}
                   className="w-full py-2.5 rounded-lg border-2 border-slate-200 border-dashed text-slate-500 text-xs font-bold hover:border-indigo-300 hover:text-indigo-600 hover:bg-white transition-all flex items-center justify-center gap-2"
                 >
-                  <Edit2 size={14} /> Start from Scratch (Manual Entry)
+                  <Edit2 size={14} /> 
+                  <span className="md:hidden">Manual Entry</span>
+                  <span className="hidden md:inline">Start from Scratch (Manual Entry)</span>
                 </button>
               </div>
 
@@ -387,9 +390,17 @@ export const InputPanel: React.FC<InputPanelProps> = ({
                 ) : (
                   <>
                     {hasJobDescription ? (
-                      <><Wand2 size={18} /> {isTailored ? 'Regenerate Tailored' : 'Tailor to Job'}</>
+                      <>
+                        <Wand2 size={18} /> 
+                        <span className="md:hidden">{isTailored ? 'Regenerate' : 'Tailor'}</span>
+                        <span className="hidden md:inline">{isTailored ? 'Regenerate Tailored' : 'Tailor to Job'}</span>
+                      </>
                     ) : (
-                      <><RefreshCw size={18} /> Refine / Translate</>
+                      <>
+                        <RefreshCw size={18} /> 
+                        <span className="md:hidden">Refine</span>
+                        <span className="hidden md:inline">Refine / Translate</span>
+                      </>
                     )}
                     
                     {/* Cost Badge */}
@@ -479,7 +490,8 @@ export const InputPanel: React.FC<InputPanelProps> = ({
             className="w-full py-3 px-4 rounded-lg flex items-center justify-center gap-2 font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 hover:text-indigo-600 transition-all"
           >
             <Download size={18} />
-            Print / Save as PDF
+            <span className="md:hidden">Save PDF</span>
+            <span className="hidden md:inline">Print / Save as PDF</span>
           
             <span className="ml-2 bg-black/20 px-2 py-0.5 rounded text-xs font-mono flex items-center gap-1">
               <Zap size={10} className="fill-yellow-400 text-yellow-400" />
