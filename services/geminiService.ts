@@ -97,7 +97,7 @@ const getContentPart = (input: FileInput): Part => {
 
 /* -------------------- Base Resume Parsing -------------------- */
 export const parseBaseResume = async (baseInput: FileInput): Promise<ResumeData> => {
-  const model = "gemini-2.5-flash"; 
+  const model = "gemini-2.5-flash-lite"; 
 
   const systemInstruction = `
 You are an expert data extraction assistant.
@@ -224,7 +224,7 @@ export const updateResumeWithChat = async (
   currentData: ResumeData,
   userPrompt: string
 ): Promise<{ data: ResumeData; description: string }> => {
-  const model = "gemini-2.5-flash";
+  const model = "gemini-2.5-flash-lite";
 
   const systemInstruction = `
 You are an intelligent resume editor.
