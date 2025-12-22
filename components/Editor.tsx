@@ -10,30 +10,28 @@ import {
   SavedResume,
   User,
   PageView,
-  ResumeLanguage, // ✅ Imported
+  ResumeLanguage,
 } from "../types";
 import {
   AlertCircle,
   Layers,
   LogIn,
-  Linkedin,
   Wand2,
-  CheckCircle2,
   Zap,
   Edit3,
   Pencil,
   Save,
   Eye,
   Sliders,
-  Globe, // ✅ Imported
-  ChevronDown // ✅ Imported
+  Globe,
+  ChevronDown
 } from "lucide-react";
 import { EditModal } from "./EditModal";
 import { Logo } from "./Logo";
 import { Footer } from "./Footer";
 import { EditorActions } from "../App";
 
-// ✅ 1. TRANSLATION MAP (Exported for Preview to use)
+// Section titles map
 export const SECTION_TITLES: Record<string, Record<string, string>> = {
   "Professional Summary": { English: "Professional Summary", German: "Profil", French: "Profil Professionnel", Spanish: "Perfil Profesional", Italian: "Profilo Professionale", Portuguese: "Resumo Profissional" },
   "Experience": { English: "Experience", German: "Berufserfahrung", French: "Expérience", Spanish: "Experiencia", Italian: "Esperienza", Portuguese: "Experiência" },
@@ -121,10 +119,10 @@ export const Editor: React.FC<EditorProps> = ({
   const [isDirty, setIsDirty] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const autosaveTimer = useRef<number | null>(null);
-  const [isLangMenuOpen, setIsLangMenuOpen] = useState(false); // ✅ Added for dropdown
+  const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
 
   // -------------------------
-  // ⚡ FIX: Refs for AI Access
+  // Refs for AI Access
   // -------------------------
   const baseResumeDataRef = useRef(baseResumeData);
   const tailoredResumeDataRef = useRef(tailoredResumeData);
@@ -143,14 +141,9 @@ export const Editor: React.FC<EditorProps> = ({
     }
   }, [initialResume]);
 
-  // -------------------------
-  // ⚡ FIX: Updated Action Registration
-  // -------------------------
   useEffect(() => {
     onRegisterActions({
       getResume: () => {
-        // Priority: Active Preview -> Tailored (if view) -> Base
-        // This allows "chaining" AI commands on top of an unaccepted preview
         if (previewResumeDataRef.current) {
             return previewResumeDataRef.current;
         }
@@ -172,7 +165,7 @@ export const Editor: React.FC<EditorProps> = ({
       isPreviewing: () => !!previewResumeDataRef.current,
     });
     return () => onRegisterActions(null);
-  }, [viewMode, onRegisterActions]); // Dependency list reduced to avoid re-registering unnecessarily
+  }, [viewMode, onRegisterActions]);
 
   const handleImageUpload = (file: File) => {
     const reader = new FileReader();
@@ -193,7 +186,6 @@ export const Editor: React.FC<EditorProps> = ({
 
     try {
       const data = await parseBaseResume(baseResumeInput);
-      // ✅ Assign IDs immediately
       data.experience = data.experience.map(e => ({...e, id: crypto.randomUUID()}));
       data.education = data.education.map(e => ({...e, id: crypto.randomUUID()}));
        
@@ -250,7 +242,6 @@ export const Editor: React.FC<EditorProps> = ({
 
     try {
       const data = await generateTailoredResume(sourceData, jobDescriptionInput, config);
-      // ✅ Assign IDs
       data.experience = data.experience.map(e => ({...e, id: e.id || crypto.randomUUID()}));
       data.education = data.education.map(e => ({...e, id: e.id || crypto.randomUUID()}));
 
@@ -319,16 +310,10 @@ export const Editor: React.FC<EditorProps> = ({
   const isLoading = appState === AppState.GENERATING_BASE || appState === AppState.GENERATING_TAILORED;
   const isPreviewing = !!previewResumeData;
 
-  // -------------------------
-  // ⚡ FIX: Updated Manual Save
-  // -------------------------
   const handleManualSave = (newData: ResumeData) => {
-    // Clear preview so next AI operation sees the committed data
     setPreviewResumeData(null); 
-    
     if (isTailoredView) setTailoredResumeData(newData);
     else setBaseResumeData(newData);
-    
     setIsDirty(true);
   };
 
@@ -442,21 +427,33 @@ export const Editor: React.FC<EditorProps> = ({
         )}
 
         {activeResumeData && (
-          <div className={["p-4 md:p-8 transition-all duration-300 h-full overflow-y-auto flex flex-col items-center", isLoading ? "opacity-30 blur-[1px]" : "opacity-100", isPreviewing ? "bg-indigo-50/60 border-2 border-dashed border-indigo-300 rounded-xl" : ""].join(" ")}>
-            <div className="w-full max-w-[210mm] mb-4 flex items-center justify-between text-sm font-medium text-slate-500">
-              <div className="flex items-center gap-3">
+          <div className={["p-3 md:p-8 transition-all duration-300 h-full overflow-y-auto flex flex-col items-center", isLoading ? "opacity-30 blur-[1px]" : "opacity-100", isPreviewing ? "bg-indigo-50/60 border-2 border-dashed border-indigo-300 rounded-xl" : ""].join(" ")}>
+            
+            {/* ✅ MOBILE-OPTIMIZED TOOLBAR */}
+            <div className="w-full max-w-[210mm] mb-4 flex flex-wrap items-center justify-between gap-2 text-sm font-medium text-slate-500">
+              
+              <div className="flex items-center gap-2">
+                 {/* Mode Toggle - Icons Only on Mobile */}
                  <div className="bg-slate-200 p-1 rounded-lg flex text-xs font-bold shadow-inner">
-                  <button onClick={() => setViewMode("base")} className={`px-4 py-1.5 rounded-md transition-all flex items-center gap-2 ${viewMode === "base" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}><Layers size={12} /> Base</button>
-                  <button onClick={() => setViewMode("tailored")} disabled={!tailoredResumeData} className={`px-4 py-1.5 rounded-md transition-all flex items-center gap-2 ${viewMode === "tailored" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500"} ${!tailoredResumeData ? "opacity-50 cursor-not-allowed" : "hover:text-slate-700"}`}><Layers size={12} /> Tailored</button>
+                  <button onClick={() => setViewMode("base")} className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${viewMode === "base" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+                    <Layers size={12} /> 
+                    <span className="hidden sm:inline">Base</span>
+                  </button>
+                  <button onClick={() => setViewMode("tailored")} disabled={!tailoredResumeData} className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${viewMode === "tailored" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500"} ${!tailoredResumeData ? "opacity-50 cursor-not-allowed" : "hover:text-slate-700"}`}>
+                    <Wand2 size={12} />
+                    <span className="hidden sm:inline">Tailored</span>
+                  </button>
                 </div>
                 
-                {/* ✅ LANGUAGE SWITCHER */}
+                {/* Language Switcher - Icon Only on Mobile */}
                 <div className="relative">
                    <button 
                      onClick={() => setIsLangMenuOpen(!isLangMenuOpen)}
-                     className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm"
+                     className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 sm:gap-2 shadow-sm"
                    >
-                     <Globe size={14} /> {config.language} <ChevronDown size={12} />
+                     <Globe size={14} /> 
+                     <span className="hidden sm:inline">{config.language}</span>
+                     <ChevronDown size={12} />
                    </button>
                    {isLangMenuOpen && (
                      <div className="absolute top-full mt-1 left-0 bg-white border border-slate-200 rounded-lg shadow-xl py-1 z-50 w-32">
@@ -479,12 +476,20 @@ export const Editor: React.FC<EditorProps> = ({
               </div>
 
               <div className="flex gap-2">
-                {isPreviewing && <button onClick={() => setPreviewResumeData(null)} className="text-xs font-bold px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-600 hover:text-indigo-600 shadow-sm">Exit preview</button>}
-                <button onClick={() => setIsEditModalOpen(true)} className="bg-white border border-slate-300 text-slate-600 hover:text-indigo-600 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm"><Edit3 size={14} /> Manual Edit</button>
+                {isPreviewing && (
+                    <button onClick={() => setPreviewResumeData(null)} className="text-xs font-bold px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-600 hover:text-indigo-600 shadow-sm">
+                        <span className="md:hidden">Exit</span>
+                        <span className="hidden md:inline">Exit preview</span>
+                    </button>
+                )}
+                <button onClick={() => setIsEditModalOpen(true)} className="bg-white border border-slate-300 text-slate-600 hover:text-indigo-600 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm">
+                    <Edit3 size={14} /> 
+                    <span className="md:hidden">Edit</span>
+                    <span className="hidden md:inline">Manual Edit</span>
+                </button>
               </div>
             </div>
 
-            {/* ✅ PREVIEW WITH LANGUAGE PROP */}
             <ResumePreview 
               data={activeResumeData} 
               baseData={baseResumeData} 
