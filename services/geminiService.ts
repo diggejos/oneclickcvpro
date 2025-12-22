@@ -97,7 +97,7 @@ const getContentPart = (input: FileInput): Part => {
 
 /* -------------------- Base Resume Parsing -------------------- */
 export const parseBaseResume = async (baseInput: FileInput): Promise<ResumeData> => {
-  const model = "gemini-2.5-flash-lite"; 
+  const model = "gemini-1.5-flash"; 
 
   const systemInstruction = `
 You are an expert data extraction assistant.
@@ -135,7 +135,7 @@ export const generateTailoredResume = async (
   jobDescriptionInput: FileInput | null,
   config: ResumeConfig
 ): Promise<ResumeData> => {
-  const model = "gemini-2.5-flash";
+  const model = "gemini-1.5-flash";
 
   let toneInstruction = "";
   switch (config.tone) {
@@ -224,7 +224,7 @@ export const updateResumeWithChat = async (
   currentData: ResumeData,
   userPrompt: string
 ): Promise<{ data: ResumeData; description: string }> => {
-  const model = "gemini-2.5-flash-lite";
+  const model = "gemini-1.5-flash";
 
   const systemInstruction = `
 You are an intelligent resume editor.
@@ -298,7 +298,7 @@ export async function unifiedChatAgent(
 
   // 🟡 No resume loaded → Support / Q&A Mode
   if (!currentResumeData) {
-    const model = "gemini-2.5-flash-lite";
+    const model = "gemini-1.5-flash";
     const systemInstruction = `
       You are the expert AI support assistant for OneClickCVPro.
       Your role is to answer questions about the app, features, pricing, and general resume advice.
