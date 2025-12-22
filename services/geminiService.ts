@@ -19,7 +19,7 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 4) {
       if (!isOverloaded503(err) || last) throw err;
 
       // exponential backoff + jitter
-      const base = Math.min(8000, 500 * Math.pow(2, attempt)); // 0.5s,1s,2s,4s,8s
+      const base = Math.min(8000, 500 * Math.pow(2, attempt)); 
       const jitter = Math.floor(Math.random() * 250);
       await sleep(base + jitter);
     }
@@ -48,6 +48,7 @@ const RESUME_SCHEMA: Schema = {
       items: {
         type: Type.OBJECT,
         properties: {
+          id: { type: Type.STRING }, // ✅ ADDED: Preserve ID
           role: { type: Type.STRING },
           company: { type: Type.STRING },
           website: {
@@ -68,6 +69,7 @@ const RESUME_SCHEMA: Schema = {
       items: {
         type: Type.OBJECT,
         properties: {
+          id: { type: Type.STRING }, // ✅ ADDED: Preserve ID
           degree: { type: Type.STRING },
           school: { type: Type.STRING },
           website: {
@@ -85,7 +87,7 @@ const RESUME_SCHEMA: Schema = {
 /* -------------------- Helper: Text or PDF Part -------------------- */
 const getContentPart = (input: FileInput): Part => {
   if (input.type === "file" && input.mimeType && input.content) {
-    const base64Data = input.content.split(",")[1] || input.content; // strip data: prefix if present
+    const base64Data = input.content.split(",")[1] || input.content; 
     return {
       inlineData: { mimeType: input.mimeType, data: base64Data },
     };
@@ -95,7 +97,7 @@ const getContentPart = (input: FileInput): Part => {
 
 /* -------------------- Base Resume Parsing -------------------- */
 export const parseBaseResume = async (baseInput: FileInput): Promise<ResumeData> => {
-  const model = "gemini-2.5-flash";
+  const model = "gemini-2.5-flash"; 
 
   const systemInstruction = `
 You are an expert data extraction assistant.
@@ -138,13 +140,9 @@ export const generateTailoredResume = async (
   let toneInstruction = "";
   switch (config.tone) {
     case "corporate":
-      toneInstruction =
-        "Use highly professional, executive-level language. Focus on ROI, strategic impact, and formal business terminology. Avoid casual phrasing.";
-      break;
+      toneInstruction = "Use highly professional, executive-level language. Focus on ROI, strategic impact, and formal business terminology."; break;
     case "creative":
-      toneInstruction =
-        "Use engaging, innovative, and energetic language. Show personality. Focus on creativity, adaptability, and fresh perspectives.";
-      break;
+      toneInstruction = "Use engaging, innovative, and energetic language. Show personality. Focus on creativity, adaptability, and fresh perspectives."; break;
     default:
       toneInstruction = "Use a standard, balanced professional tone suitable for most industries.";
   }
@@ -152,31 +150,23 @@ export const generateTailoredResume = async (
   let lengthInstruction = "";
   switch (config.length) {
     case "concise":
-      lengthInstruction =
-        "Keep it extremely concise. Summary should be under 3 sentences. Limit experience to the 3 most recent/relevant roles with max 3 bullet points each. Focus only on the absolute highlights.";
-      break;
+      lengthInstruction = "Keep it extremely concise. Summary should be under 3 sentences. Limit experience to the 3 most recent/relevant roles."; break;
     case "detailed":
-      lengthInstruction =
-        "Provide a comprehensive detailed overview. Elaborate on projects in the summary. Include up to 5-6 bullet points per role, detailing specific methodologies and outcomes.";
-      break;
+      lengthInstruction = "Provide a comprehensive detailed overview. Elaborate on projects in the summary. Include up to 5-6 bullet points per role."; break;
     default:
       lengthInstruction = "Standard length. Summary approx 4-5 sentences. 3-5 bullet points per relevant role.";
   }
 
   let refinementInstruction = "";
   if (config.refinementLevel <= 20) {
-    refinementInstruction =
-      "STRICTLY PRESERVE ORIGINAL PHRASING. Only fix grammatical errors or major formatting issues. Do not sound like an AI. Keep the user's original voice.";
+    refinementInstruction = "STRICTLY PRESERVE ORIGINAL PHRASING. Only fix grammatical errors or major formatting issues.";
   } else if (config.refinementLevel <= 60) {
-    refinementInstruction =
-      "Polish the resume for clarity and professionalism. Improve awkward sentences but keep the original meaning and tone intact. Avoid over-optimizing.";
+    refinementInstruction = "Polish the resume for clarity and professionalism. Improve awkward sentences but keep the original meaning and tone intact.";
   } else {
-    refinementInstruction =
-      "COMPLETELY REWRITE for maximum impact. Use strong action verbs and persuasive language. Optimize heavily for ATS keywords. It is acceptable to sound very polished.";
+    refinementInstruction = "COMPLETELY REWRITE for maximum impact. Use strong action verbs and persuasive language. Optimize heavily for ATS keywords.";
   }
 
-  const isRefinementOnly =
-    !jobDescriptionInput || (!jobDescriptionInput.content && jobDescriptionInput.type === "text");
+  const isRefinementOnly = !jobDescriptionInput || (!jobDescriptionInput.content && jobDescriptionInput.type === "text");
 
   const systemInstruction = `
 You are an expert resume strategist.
@@ -189,9 +179,8 @@ Rewriting Intensity: ${refinementInstruction}
 Target Language: ${config.language}
 
 TASK:
-${
-  isRefinementOnly
-    ? "The user wants to refine the style, length, and language of their current resume without targeting a specific job. Maintain the core information but adjust the phrasing, detail level, and language."
+${isRefinementOnly
+    ? "The user wants to refine the style, length, and language of their current resume without targeting a specific job."
     : "The user wants to tailor this resume to a specific Job Description. Prioritize experience and skills that match the JD keywords."
 }
 
@@ -202,7 +191,11 @@ Ensure you preserve the 'website' fields for companies and schools in the output
 Ensure the output strictly follows the JSON schema.
   `.trim();
 
-  const parts: Part[] = [{ text: `CURRENT RESUME JSON: ${JSON.stringify(baseResumeData)}` }];
+  // ✅ SANITIZE INPUT: Remove profile image from context to save tokens/bandwidth
+  const cleanData = { ...baseResumeData };
+  delete cleanData.profileImage;
+
+  const parts: Part[] = [{ text: `CURRENT RESUME JSON: ${JSON.stringify(cleanData)}` }];
 
   if (!isRefinementOnly && jobDescriptionInput) {
     parts.push({ text: "TARGET JOB DESCRIPTION:" });
@@ -245,9 +238,13 @@ Do not lose any existing data unless explicitly asked to remove it.
 Preserve 'website' fields.
   `.trim();
 
+  // ✅ SANITIZE INPUT: Remove profile image to prevent crash
+  const cleanData = { ...currentData };
+  delete cleanData.profileImage;
+
   const prompt = `
 CURRENT DATA:
-${JSON.stringify(currentData)}
+${JSON.stringify(cleanData)}
 
 USER REQUEST:
 ${userPrompt}
@@ -266,8 +263,7 @@ ${userPrompt}
             data: RESUME_SCHEMA,
             description: {
               type: Type.STRING,
-              description:
-                "Brief description of changes made, e.g., 'Added Python to skills' or 'Rewrote summary'.",
+              description: "Brief description of changes made.",
             },
           },
           required: ["data", "description"],
@@ -306,13 +302,6 @@ export async function unifiedChatAgent(
     const systemInstruction = `
       You are the expert AI support assistant for OneClickCVPro.
       Your role is to answer questions about the app, features, pricing, and general resume advice.
-      
-      Key Info:
-      - Users build resumes in the 'Editor'.
-      - They manage saved resumes in the 'Dashboard'.
-      - 'Credits' are used for AI tailoring (1 credit) and PDF downloads (1 credit).
-      - If a user wants to edit their resume, tell them to open it in the Editor first.
-      
       Be helpful, brief, and friendly. Do not hallucinate features.
     `.trim();
 
@@ -322,7 +311,6 @@ export async function unifiedChatAgent(
           model,
           config: { systemInstruction },
           contents: history.map(m => ({
-            // ✅ Fix: Map 'assistant' (from state) to 'model' (for Gemini API)
             role: m.role === 'assistant' || m.role === 'model' ? 'model' : 'user',
             parts: [{ text: m.text }]
           }))
