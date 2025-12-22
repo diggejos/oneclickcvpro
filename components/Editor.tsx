@@ -84,7 +84,7 @@ export const Editor: React.FC<EditorProps> = ({
   const [appState, setAppState] = useState<AppState>(
     initialResume?.baseResumeData ? AppState.BASE_READY : AppState.IDLE
   );
-  
+   
   const [previewResumeData, setPreviewResumeData] = useState<ResumeData | null>(null);
 
   const [config, setConfig] = useState<ResumeConfig>(
@@ -123,6 +123,19 @@ export const Editor: React.FC<EditorProps> = ({
   const autosaveTimer = useRef<number | null>(null);
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false); // ✅ Added for dropdown
 
+  // -------------------------
+  // ⚡ FIX: Refs for AI Access
+  // -------------------------
+  const baseResumeDataRef = useRef(baseResumeData);
+  const tailoredResumeDataRef = useRef(tailoredResumeData);
+  const previewResumeDataRef = useRef(previewResumeData);
+
+  useEffect(() => {
+    baseResumeDataRef.current = baseResumeData;
+    tailoredResumeDataRef.current = tailoredResumeData;
+    previewResumeDataRef.current = previewResumeData;
+  }, [baseResumeData, tailoredResumeData, previewResumeData]);
+
   useEffect(() => {
     if (initialResume?.tailoredResumeData) {
       setViewMode("tailored");
@@ -130,9 +143,21 @@ export const Editor: React.FC<EditorProps> = ({
     }
   }, [initialResume]);
 
+  // -------------------------
+  // ⚡ FIX: Updated Action Registration
+  // -------------------------
   useEffect(() => {
     onRegisterActions({
-      getResume: () => (viewMode === "tailored" ? tailoredResumeData : baseResumeData),
+      getResume: () => {
+        // Priority: Active Preview -> Tailored (if view) -> Base
+        // This allows "chaining" AI commands on top of an unaccepted preview
+        if (previewResumeDataRef.current) {
+            return previewResumeDataRef.current;
+        }
+        return viewMode === "tailored" 
+            ? tailoredResumeDataRef.current 
+            : baseResumeDataRef.current;
+      },
       updateResume: (newData: ResumeData) => {
         setPreviewResumeData(null);
         if (viewMode === "tailored") setTailoredResumeData(newData);
@@ -144,10 +169,10 @@ export const Editor: React.FC<EditorProps> = ({
         setMobileTab("preview");
       },
       clearPreview: () => setPreviewResumeData(null),
-      isPreviewing: () => !!previewResumeData,
+      isPreviewing: () => !!previewResumeDataRef.current,
     });
     return () => onRegisterActions(null);
-  }, [baseResumeData, tailoredResumeData, viewMode, onRegisterActions, previewResumeData]);
+  }, [viewMode, onRegisterActions]); // Dependency list reduced to avoid re-registering unnecessarily
 
   const handleImageUpload = (file: File) => {
     const reader = new FileReader();
@@ -171,7 +196,7 @@ export const Editor: React.FC<EditorProps> = ({
       // ✅ Assign IDs immediately
       data.experience = data.experience.map(e => ({...e, id: crypto.randomUUID()}));
       data.education = data.education.map(e => ({...e, id: crypto.randomUUID()}));
-      
+       
       setBaseResumeData(data);
       setAppState(AppState.BASE_READY);
       setIsDirty(true);
@@ -294,9 +319,16 @@ export const Editor: React.FC<EditorProps> = ({
   const isLoading = appState === AppState.GENERATING_BASE || appState === AppState.GENERATING_TAILORED;
   const isPreviewing = !!previewResumeData;
 
+  // -------------------------
+  // ⚡ FIX: Updated Manual Save
+  // -------------------------
   const handleManualSave = (newData: ResumeData) => {
+    // Clear preview so next AI operation sees the committed data
+    setPreviewResumeData(null); 
+    
     if (isTailoredView) setTailoredResumeData(newData);
     else setBaseResumeData(newData);
+    
     setIsDirty(true);
   };
 
