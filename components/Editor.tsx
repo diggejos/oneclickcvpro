@@ -10,7 +10,7 @@ import {
   SavedResume,
   User,
   PageView,
-  ResumeLanguage,
+  ResumeLanguage, // ✅ Imported
 } from "../types";
 import {
   AlertCircle,
@@ -25,15 +25,15 @@ import {
   Save,
   Eye,
   Sliders,
-  Globe,
-  ChevronDown
+  Globe, // ✅ Imported
+  ChevronDown // ✅ Imported
 } from "lucide-react";
 import { EditModal } from "./EditModal";
 import { Logo } from "./Logo";
 import { Footer } from "./Footer";
 import { EditorActions } from "../App";
 
-// 1. TRANSLATION MAP (Exported for Preview to use)
+// ✅ 1. TRANSLATION MAP (Exported for Preview to use)
 export const SECTION_TITLES: Record<string, Record<string, string>> = {
   "Professional Summary": { English: "Professional Summary", German: "Profil", French: "Profil Professionnel", Spanish: "Perfil Profesional", Italian: "Profilo Professionale", Portuguese: "Resumo Profissional" },
   "Experience": { English: "Experience", German: "Berufserfahrung", French: "Expérience", Spanish: "Experiencia", Italian: "Esperienza", Portuguese: "Experiência" },
@@ -84,7 +84,7 @@ export const Editor: React.FC<EditorProps> = ({
   const [appState, setAppState] = useState<AppState>(
     initialResume?.baseResumeData ? AppState.BASE_READY : AppState.IDLE
   );
-  
+   
   const [previewResumeData, setPreviewResumeData] = useState<ResumeData | null>(null);
 
   const [config, setConfig] = useState<ResumeConfig>(
@@ -112,19 +112,6 @@ export const Editor: React.FC<EditorProps> = ({
     initialResume?.tailoredResumeData || null
   );
 
-  // -- REFS FOR AI ASSISTANT ACCESS --
-  // We use refs so the API can access the absolute latest state without stale closures
-  const baseResumeDataRef = useRef(baseResumeData);
-  const tailoredResumeDataRef = useRef(tailoredResumeData);
-  const previewResumeDataRef = useRef(previewResumeData);
-
-  // Sync refs with state
-  useEffect(() => {
-    baseResumeDataRef.current = baseResumeData;
-    tailoredResumeDataRef.current = tailoredResumeData;
-    previewResumeDataRef.current = previewResumeData;
-  }, [baseResumeData, tailoredResumeData, previewResumeData]);
-
   const [viewMode, setViewMode] = useState<"base" | "tailored">("base");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -134,7 +121,20 @@ export const Editor: React.FC<EditorProps> = ({
   const [isDirty, setIsDirty] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const autosaveTimer = useRef<number | null>(null);
-  const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
+  const [isLangMenuOpen, setIsLangMenuOpen] = useState(false); // ✅ Added for dropdown
+
+  // -------------------------
+  // ⚡ FIX: Refs for AI Access
+  // -------------------------
+  const baseResumeDataRef = useRef(baseResumeData);
+  const tailoredResumeDataRef = useRef(tailoredResumeData);
+  const previewResumeDataRef = useRef(previewResumeData);
+
+  useEffect(() => {
+    baseResumeDataRef.current = baseResumeData;
+    tailoredResumeDataRef.current = tailoredResumeData;
+    previewResumeDataRef.current = previewResumeData;
+  }, [baseResumeData, tailoredResumeData, previewResumeData]);
 
   useEffect(() => {
     if (initialResume?.tailoredResumeData) {
@@ -143,19 +143,23 @@ export const Editor: React.FC<EditorProps> = ({
     }
   }, [initialResume]);
 
-  // -- REGISTER ACTIONS (UPDATED) --
+  // -------------------------
+  // ⚡ FIX: Updated Action Registration
+  // -------------------------
   useEffect(() => {
     onRegisterActions({
       getResume: () => {
-        // Priority: 1. Preview (if active) -> 2. Tailored (if viewMode) -> 3. Base
-        // Using refs ensures we grab the very latest data even inside async calls
-        if (previewResumeDataRef.current) return previewResumeDataRef.current;
+        // Priority: Active Preview -> Tailored (if view) -> Base
+        // This allows "chaining" AI commands on top of an unaccepted preview
+        if (previewResumeDataRef.current) {
+            return previewResumeDataRef.current;
+        }
         return viewMode === "tailored" 
-          ? tailoredResumeDataRef.current 
-          : baseResumeDataRef.current;
+            ? tailoredResumeDataRef.current 
+            : baseResumeDataRef.current;
       },
       updateResume: (newData: ResumeData) => {
-        setPreviewResumeData(null); // Clear preview on acceptance/update
+        setPreviewResumeData(null);
         if (viewMode === "tailored") setTailoredResumeData(newData);
         else setBaseResumeData(newData);
       },
@@ -165,10 +169,10 @@ export const Editor: React.FC<EditorProps> = ({
         setMobileTab("preview");
       },
       clearPreview: () => setPreviewResumeData(null),
-      isPreviewing: () => !!previewResumeData,
+      isPreviewing: () => !!previewResumeDataRef.current,
     });
     return () => onRegisterActions(null);
-  }, [viewMode, onRegisterActions, previewResumeData]); // dependencies simplified
+  }, [viewMode, onRegisterActions]); // Dependency list reduced to avoid re-registering unnecessarily
 
   const handleImageUpload = (file: File) => {
     const reader = new FileReader();
@@ -189,10 +193,10 @@ export const Editor: React.FC<EditorProps> = ({
 
     try {
       const data = await parseBaseResume(baseResumeInput);
-      // Assign IDs immediately
+      // ✅ Assign IDs immediately
       data.experience = data.experience.map(e => ({...e, id: crypto.randomUUID()}));
       data.education = data.education.map(e => ({...e, id: crypto.randomUUID()}));
-      
+       
       setBaseResumeData(data);
       setAppState(AppState.BASE_READY);
       setIsDirty(true);
@@ -246,7 +250,7 @@ export const Editor: React.FC<EditorProps> = ({
 
     try {
       const data = await generateTailoredResume(sourceData, jobDescriptionInput, config);
-      // Assign IDs
+      // ✅ Assign IDs
       data.experience = data.experience.map(e => ({...e, id: e.id || crypto.randomUUID()}));
       data.education = data.education.map(e => ({...e, id: e.id || crypto.randomUUID()}));
 
@@ -315,12 +319,16 @@ export const Editor: React.FC<EditorProps> = ({
   const isLoading = appState === AppState.GENERATING_BASE || appState === AppState.GENERATING_TAILORED;
   const isPreviewing = !!previewResumeData;
 
+  // -------------------------
+  // ⚡ FIX: Updated Manual Save
+  // -------------------------
   const handleManualSave = (newData: ResumeData) => {
-    // IMPORTANT: Clear preview so future AI requests use the committed manual edit
-    setPreviewResumeData(null);
+    // Clear preview so next AI operation sees the committed data
+    setPreviewResumeData(null); 
     
     if (isTailoredView) setTailoredResumeData(newData);
     else setBaseResumeData(newData);
+    
     setIsDirty(true);
   };
 
@@ -442,7 +450,7 @@ export const Editor: React.FC<EditorProps> = ({
                   <button onClick={() => setViewMode("tailored")} disabled={!tailoredResumeData} className={`px-4 py-1.5 rounded-md transition-all flex items-center gap-2 ${viewMode === "tailored" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500"} ${!tailoredResumeData ? "opacity-50 cursor-not-allowed" : "hover:text-slate-700"}`}><Layers size={12} /> Tailored</button>
                 </div>
                 
-                {/* LANGUAGE SWITCHER */}
+                {/* ✅ LANGUAGE SWITCHER */}
                 <div className="relative">
                    <button 
                      onClick={() => setIsLangMenuOpen(!isLangMenuOpen)}
@@ -476,7 +484,7 @@ export const Editor: React.FC<EditorProps> = ({
               </div>
             </div>
 
-            {/* PREVIEW WITH LANGUAGE PROP */}
+            {/* ✅ PREVIEW WITH LANGUAGE PROP */}
             <ResumePreview 
               data={activeResumeData} 
               baseData={baseResumeData} 
