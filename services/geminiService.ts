@@ -298,7 +298,7 @@ export async function unifiedChatAgent(
 
   // 🟡 No resume loaded → Support / Q&A Mode
   if (!currentResumeData) {
-    const model = "gemini-2.5-flash";
+    const model = "gemini-2.5-flash-lite";
     const systemInstruction = `
       You are the expert AI support assistant for OneClickCVPro.
       Your role is to answer questions about the app, features, pricing, and general resume advice.
