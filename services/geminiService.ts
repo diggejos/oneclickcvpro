@@ -14,7 +14,10 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 4) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await fn();
-    } catch (err) {
+    } catch (err: any) {
+      // ✅ If quota exceeded (429), fail immediately (retrying won't help)
+      if (err?.status === 429 || err?.code === 429) throw err;
+
       const last = attempt === retries;
       if (!isOverloaded503(err) || last) throw err;
 
@@ -29,6 +32,10 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 4) {
 
 /* -------------------- Gemini client -------------------- */
 const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+
+// ✅ USE STABLE 1.5 FLASH (High Free Quota: 1,500/day)
+// DO NOT use 'lite' (limit 20/day) or '2.0' (limited availability)
+const MODEL_NAME = "gemini-1.5-flash"; 
 
 /* -------------------- Schema -------------------- */
 const RESUME_SCHEMA: Schema = {
@@ -97,8 +104,6 @@ const getContentPart = (input: FileInput): Part => {
 
 /* -------------------- Base Resume Parsing -------------------- */
 export const parseBaseResume = async (baseInput: FileInput): Promise<ResumeData> => {
-  const model = "gemini-2.5-flash-lite"; 
-
   const systemInstruction = `
 You are an expert data extraction assistant.
 Your task is to extract structured data from a raw resume (text or PDF).
@@ -112,7 +117,7 @@ IMPORTANT: Infer the 'website' domain for every company and university (e.g. 'mi
 
   const response = await withRetry(() =>
     ai.models.generateContent({
-      model,
+      model: MODEL_NAME,
       contents: {
         parts: [contentPart, { text: "Extract the data into the specified JSON format." }],
       },
@@ -135,7 +140,6 @@ export const generateTailoredResume = async (
   jobDescriptionInput: FileInput | null,
   config: ResumeConfig
 ): Promise<ResumeData> => {
-  const model = "gemini-2.5-flash-lite";
 
   let toneInstruction = "";
   switch (config.tone) {
@@ -204,7 +208,7 @@ Ensure the output strictly follows the JSON schema.
 
   const response = await withRetry(() =>
     ai.models.generateContent({
-      model,
+      model: MODEL_NAME,
       contents: { parts },
       config: {
         systemInstruction,
@@ -224,7 +228,6 @@ export const updateResumeWithChat = async (
   currentData: ResumeData,
   userPrompt: string
 ): Promise<{ data: ResumeData; description: string }> => {
-  const model = "gemini-2.5-flash-lite";
 
   const systemInstruction = `
 You are an intelligent resume editor.
@@ -252,7 +255,7 @@ ${userPrompt}
 
   const response = await withRetry(() =>
     ai.models.generateContent({
-      model,
+      model: MODEL_NAME,
       contents: prompt,
       config: {
         systemInstruction,
@@ -298,7 +301,6 @@ export async function unifiedChatAgent(
 
   // 🟡 No resume loaded → Support / Q&A Mode
   if (!currentResumeData) {
-    const model = "gemini-2.5-flash-lite";
     const systemInstruction = `
       You are the expert AI support assistant for OneClickCVPro.
       Your role is to answer questions about the app, features, pricing, and general resume advice.
@@ -308,7 +310,7 @@ export async function unifiedChatAgent(
     try {
       const response = await withRetry(() =>
         ai.models.generateContent({
-          model,
+          model: MODEL_NAME,
           config: { systemInstruction },
           contents: history.map(m => ({
             role: m.role === 'assistant' || m.role === 'model' ? 'model' : 'user',
@@ -342,6 +344,12 @@ export async function unifiedChatAgent(
 
   } catch (err: any) {
     const msg = String(err?.message || err);
+
+    if (err?.status === 429) {
+       return {
+         text: "⚠️ You've hit the usage limit. Please wait a moment or upgrade.",
+       };
+    }
 
     if (/overloaded|503|unavailable/i.test(msg)) {
       return {
