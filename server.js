@@ -278,10 +278,8 @@ app.post("/api/ai/tailor", async (req, res) => {
 
 // C. Chat / Edit
 app.post("/api/ai/chat", async (req, res) => {
-  const userIdRaw = req.headers["x-user-id"];
-  if (!userIdRaw) return res.status(401).json({ error: "Unauthorized" });
-
   const { history, text, currentResumeData } = req.body;
+  const userIdRaw = req.headers["x-user-id"];
 
   try {
     // Mode 1: Support Chat
@@ -299,6 +297,7 @@ app.post("/api/ai/chat", async (req, res) => {
     }
 
     // Mode 2: Resume Editor
+    if (!userIdRaw) return res.status(401).json({ error: "Unauthorized" });
     const systemInstruction = `Modify the JSON based on the user request. Return { data, description }.`;
     const prompt = `CURRENT DATA: ${JSON.stringify(currentResumeData)}\nUSER REQUEST: ${text}`;
     
