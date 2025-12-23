@@ -10,8 +10,8 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import path from 'path';
 import { fileURLToPath } from 'url';
-// --- NEW IMPORTS FOR AI ---
-import { GoogleGenAI, SchemaType } from "@google/genai";
+// --- FIXED IMPORT HERE (Changed SchemaType to Type) ---
+import { GoogleGenAI, Type } from "@google/genai";
 import pLimit from 'p-limit'; 
 
 // --- CONFIG ---
@@ -20,8 +20,7 @@ const __dirname = path.dirname(__filename);
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// --- NEW: GEMINI CONFIG ---
-// Make sure you add GEMINI_API_KEY to your .env file!
+// --- GEMINI CONFIG ---
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY });
 const aiQueue = pLimit(5); // Only allow 5 concurrent AI requests to Google
 
@@ -133,37 +132,37 @@ const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 //   ⚡️ NEW AI SECTION (Logic moved from Frontend to Backend)
 // ------------------------------------------------------------------
 
-// 1. Define Schema (Matches your frontend types)
+// 1. Define Schema (Updated to use Type.*)
 const RESUME_RESPONSE_SCHEMA = {
-  type: SchemaType.OBJECT,
+  type: Type.OBJECT,
   properties: {
-    fullName: { type: SchemaType.STRING },
-    contactInfo: { type: SchemaType.STRING, description: "Format: Email | Phone | LinkedIn" },
-    location: { type: SchemaType.STRING },
-    summary: { type: SchemaType.STRING },
-    skills: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    fullName: { type: Type.STRING },
+    contactInfo: { type: Type.STRING, description: "Format: Email | Phone | LinkedIn" },
+    location: { type: Type.STRING },
+    summary: { type: Type.STRING },
+    skills: { type: Type.ARRAY, items: { type: Type.STRING } },
     experience: {
-      type: SchemaType.ARRAY,
+      type: Type.ARRAY,
       items: {
-        type: SchemaType.OBJECT,
+        type: Type.OBJECT,
         properties: {
-          role: { type: SchemaType.STRING },
-          company: { type: SchemaType.STRING },
-          website: { type: SchemaType.STRING, description: "Domain (e.g. google.com)" },
-          duration: { type: SchemaType.STRING },
-          points: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+          role: { type: Type.STRING },
+          company: { type: Type.STRING },
+          website: { type: Type.STRING, description: "Domain (e.g. google.com)" },
+          duration: { type: Type.STRING },
+          points: { type: Type.ARRAY, items: { type: Type.STRING } },
         },
       },
     },
     education: {
-      type: SchemaType.ARRAY,
+      type: Type.ARRAY,
       items: {
-        type: SchemaType.OBJECT,
+        type: Type.OBJECT,
         properties: {
-          degree: { type: SchemaType.STRING },
-          school: { type: SchemaType.STRING },
-          website: { type: SchemaType.STRING },
-          year: { type: SchemaType.STRING },
+          degree: { type: Type.STRING },
+          school: { type: Type.STRING },
+          website: { type: Type.STRING },
+          year: { type: Type.STRING },
         },
       },
     },
@@ -322,10 +321,10 @@ app.post("/api/ai/chat", async (req, res) => {
           systemInstruction,
           responseMimeType: "application/json",
           responseSchema: {
-            type: SchemaType.OBJECT,
+            type: Type.OBJECT,
             properties: {
               data: RESUME_RESPONSE_SCHEMA,
-              description: { type: SchemaType.STRING }
+              description: { type: Type.STRING }
             },
             required: ["data", "description"]
           }
@@ -347,7 +346,7 @@ app.post("/api/ai/chat", async (req, res) => {
 
 
 // ------------------------------------------------------------------
-//   ORIGINAL ROUTES (Preserved exactly as they were)
+//   ORIGINAL ROUTES (Preserved)
 // ------------------------------------------------------------------
 
 app.get("/api/users/me", async (req, res) => {
