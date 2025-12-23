@@ -1,14 +1,23 @@
 import { ResumeData, ResumeConfig, FileInput } from "../types";
 
 // --- CHANGED: URL LOGIC ---
-// In production, use empty string "" to make requests relative (e.g. /api/ai/parse)
-// In development, default to localhost:4242
-const API_URL = import.meta.env.PROD 
-  ? "" 
-  : (import.meta.env.VITE_API_URL || "http://localhost:4242");
+// Prefer explicit backend URL in all environments; fallback to relative in prod.
+const API_URL =
+  import.meta.env.VITE_BACKEND_URL ||
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.PROD ? "" : "http://localhost:4242");
 
 const getHeaders = () => {
-  const userId = localStorage.getItem("oneclickcv_user_id"); 
+  const directId = localStorage.getItem("oneclickcv_user_id");
+  const userId = directId || (() => {
+    try {
+      const storedUser = localStorage.getItem("oneclickcv_user");
+      const parsed = storedUser ? JSON.parse(storedUser) : null;
+      return parsed?.id || "";
+    } catch {
+      return "";
+    }
+  })();
   return {
     "Content-Type": "application/json",
     "x-user-id": userId || "",
