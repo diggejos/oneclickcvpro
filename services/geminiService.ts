@@ -1,27 +1,41 @@
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { ResumeData, ResumeConfig, FileInput } from "../types";
 
-/* -------------------- retry/backoff helpers -------------------- */
+/* ==========================================================================
+   HELPER FUNCTIONS: RETRY & ERROR HANDLING
+   ========================================================================== */
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Detects if the error is a temporary 503 Service Unavailable or Overloaded error.
+ */
 function isOverloaded503(err: any) {
   const code = err?.response?.status || err?.status || err?.code;
   const msg = String(err?.message || "");
   return code === 503 || /overloaded|unavailable|503/i.test(msg);
 }
 
+/**
+ * Retries a function with exponential backoff.
+ * Stops immediately if we hit a 429 (Quota Limit).
+ */
 async function withRetry<T>(fn: () => Promise<T>, retries = 3) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await fn();
     } catch (err: any) {
-      // ✅ If quota exceeded (429), fail immediately
-      if (err?.response?.status === 429 || err?.status === 429) throw err;
+      // ✅ If quota exceeded (429), fail immediately (retrying won't help)
+      if (err?.response?.status === 429 || err?.status === 429) {
+        throw err;
+      }
 
       const last = attempt === retries;
-      if (!isOverloaded503(err) || last) throw err;
+      if (!isOverloaded503(err) || last) {
+        throw err;
+      }
 
-      // exponential backoff + jitter
+      // Exponential backoff + random jitter to prevent thundering herd
       const base = Math.min(8000, 1000 * Math.pow(2, attempt));
       const jitter = Math.floor(Math.random() * 500);
       await sleep(base + jitter);
@@ -30,20 +44,30 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3) {
   throw new Error("AI_RETRY_FAILED");
 }
 
-/* -------------------- Gemini client -------------------- */
+
+/* ==========================================================================
+   GEMINI CLIENT CONFIGURATION
+   ========================================================================== */
+
 // ✅ Initialize the official Web SDK
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
 
-// ✅ USE STABLE 1.5 FLASH
+// ✅ USE STABLE 1.5 FLASH (Recommended for production)
 const MODEL_NAME = "gemini-1.5-flash";
 
-/* -------------------- Schema -------------------- */
-// Converted to SchemaType for the Web SDK
+
+/* ==========================================================================
+   DATA SCHEMAS
+   ========================================================================== */
+
 const RESUME_SCHEMA = {
   type: SchemaType.OBJECT,
   properties: {
     fullName: { type: SchemaType.STRING },
-    contactInfo: { type: SchemaType.STRING, description: "Format: Email | Phone | LinkedIn" },
+    contactInfo: { 
+      type: SchemaType.STRING, 
+      description: "Format: Email | Phone | LinkedIn" 
+    },
     location: { type: SchemaType.STRING },
     summary: { type: SchemaType.STRING },
     skills: {
@@ -92,7 +116,15 @@ const RESUME_SCHEMA = {
   required: ["fullName", "summary", "skills", "experience"],
 };
 
-/* -------------------- Helper: Text or PDF Part -------------------- */
+
+/* ==========================================================================
+   FILE HANDLING HELPERS
+   ========================================================================== */
+
+/**
+ * Converts the file input into the format expected by the Google Generative AI SDK.
+ * Handles both Text and Base64 File inputs.
+ */
 const getContentParts = (input: FileInput) => {
   if (input.type === "file" && input.mimeType && input.content) {
     const base64Data = input.content.split(",")[1] || input.content;
@@ -108,7 +140,11 @@ const getContentParts = (input: FileInput) => {
   return [{ text: input.content }];
 };
 
-/* -------------------- Base Resume Parsing -------------------- */
+
+/* ==========================================================================
+   CORE FUNCTION: PARSE BASE RESUME
+   ========================================================================== */
+
 export const parseBaseResume = async (baseInput: FileInput): Promise<ResumeData> => {
   const model = genAI.getGenerativeModel({
     model: MODEL_NAME,
@@ -130,7 +166,7 @@ IMPORTANT: Infer the 'website' domain for every company and university (e.g. 'mi
   const userContent = getContentParts(baseInput);
   userContent.push({ text: "Extract the data into the specified JSON format." });
 
-  // Pass system instruction as first part of prompt for best Web SDK compatibility
+  // We pass systemInstruction as part of the prompt to avoid strict Content-type 400 errors
   const promptParts = [{ text: systemInstruction }, ...userContent];
 
   const result = await withRetry(() => model.generateContent(promptParts));
@@ -141,7 +177,11 @@ IMPORTANT: Infer the 'website' domain for every company and university (e.g. 'mi
   return JSON.parse(responseText) as ResumeData;
 };
 
-/* -------------------- Tailored Resume Generation -------------------- */
+
+/* ==========================================================================
+   CORE FUNCTION: GENERATE TAILORED RESUME
+   ========================================================================== */
+
 export const generateTailoredResume = async (
   baseResumeData: ResumeData,
   jobDescriptionInput: FileInput | null,
@@ -156,7 +196,7 @@ export const generateTailoredResume = async (
     },
   });
 
-  // ✅ RESTORED ORIGINAL PROMPT LOGIC
+  /* ----------------- 1. Tone Configuration ----------------- */
   let toneInstruction = "";
   switch (config.tone) {
     case "corporate":
@@ -167,6 +207,7 @@ export const generateTailoredResume = async (
       toneInstruction = "Use a standard, balanced professional tone suitable for most industries.";
   }
 
+  /* ----------------- 2. Length Configuration ----------------- */
   let lengthInstruction = "";
   switch (config.length) {
     case "concise":
@@ -177,6 +218,7 @@ export const generateTailoredResume = async (
       lengthInstruction = "Standard length. Summary approx 4-5 sentences. 3-5 bullet points per relevant role.";
   }
 
+  /* ----------------- 3. Refinement Configuration ----------------- */
   let refinementInstruction = "";
   if (config.refinementLevel <= 20) {
     refinementInstruction = "STRICTLY PRESERVE ORIGINAL PHRASING. Only fix grammatical errors or major formatting issues.";
@@ -188,7 +230,7 @@ export const generateTailoredResume = async (
 
   const isRefinementOnly = !jobDescriptionInput || (!jobDescriptionInput.content && jobDescriptionInput.type === "text");
 
-  const systemInstruction = `
+  const systemInstructionText = `
 You are an expert resume strategist.
 Your task is to take existing resume data and rewrite it based on specific constraints.
 
@@ -211,12 +253,12 @@ Ensure you preserve the 'website' fields for companies and schools in the output
 Ensure the output strictly follows the JSON schema.
   `.trim();
 
-  // ✅ SANITIZE INPUT
+  // ✅ SANITIZE INPUT: Remove profile image from context to save tokens/bandwidth
   const cleanData = { ...baseResumeData };
   delete cleanData.profileImage;
 
   const parts = [
-    { text: systemInstruction },
+    { text: systemInstructionText },
     { text: `CURRENT RESUME JSON: ${JSON.stringify(cleanData)}` }
   ];
 
@@ -233,7 +275,11 @@ Ensure the output strictly follows the JSON schema.
   return JSON.parse(responseText) as ResumeData;
 };
 
-/* -------------------- Chat-driven Resume Update -------------------- */
+
+/* ==========================================================================
+   CORE FUNCTION: UPDATE RESUME (CHAT)
+   ========================================================================== */
+
 export const updateResumeWithChat = async (
   currentData: ResumeData,
   userPrompt: string
@@ -288,7 +334,11 @@ Preserve 'website' fields.
   return JSON.parse(responseText) as { data: ResumeData; description: string };
 };
 
-/* -------------------- Unified Chat Agent -------------------- */
+
+/* ==========================================================================
+   UNIFIED CHAT AGENT
+   ========================================================================== */
+
 interface UnifiedChatResult {
   text: string;
   proposal?: {
@@ -311,19 +361,25 @@ export async function unifiedChatAgent(
   if (!currentResumeData) {
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
     
-    // Convert history for Web SDK ('assistant' -> 'model')
-    const chatHistory = history.map(m => ({
-      role: m.role === 'assistant' ? 'model' : m.role,
-      parts: [{ text: m.text }]
+    // Map history to the format Google Generative AI expects
+    const chatHistory = history.map(h => ({
+      role: h.role === "assistant" ? "model" : h.role,
+      parts: [{ text: h.text }]
     }));
+
+    // ✅ FIX FOR 400 ERROR: Pass system instruction as a formal Object
+    const systemInstruction = {
+      role: "system",
+      parts: [{
+        text: `You are the expert AI support assistant for OneClickCVPro.
+        Your role is to answer questions about the app, features, pricing, and general resume advice.
+        Be helpful, brief, and friendly. Do not hallucinate features.`
+      }]
+    };
 
     const chat = model.startChat({
       history: chatHistory,
-      systemInstruction: `
-        You are the expert AI support assistant for OneClickCVPro.
-        Your role is to answer questions about the app, features, pricing, and general resume advice.
-        Be helpful, brief, and friendly. Do not hallucinate features.
-      `.trim(),
+      systemInstruction: systemInstruction,
     });
 
     try {
