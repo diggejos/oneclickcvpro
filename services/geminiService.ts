@@ -1,34 +1,142 @@
+// geminiService.ts
 import { GoogleGenAI, Type, Schema, Part } from "@google/genai";
 import { ResumeData, ResumeConfig, FileInput } from "../types";
 
-/* -------------------- retry/backoff helpers -------------------- */
+/* -------------------- Gemini client -------------------- */
+const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+
+/* -------------------- retry/backoff + quota helpers -------------------- */
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function isOverloaded503(err: any) {
-  const code = err?.error?.code ?? err?.status ?? err?.code;
-  const msg = String(err?.error?.message || err?.message || "");
-  return code === 503 || /overloaded|unavailable|503/i.test(msg);
+function getErrCode(err: any) {
+  return err?.error?.code ?? err?.status ?? err?.code;
+}
+
+function getErrMessage(err: any) {
+  return String(err?.error?.message || err?.message || "");
+}
+
+/**
+ * Extract retryDelay like "22s" from Gemini error details (RetryInfo)
+ */
+function getRetryDelayMs(err: any): number | null {
+  const details = err?.error?.details;
+  if (!Array.isArray(details)) return null;
+
+  const retryInfo = details.find((d: any) => typeof d?.retryDelay === "string");
+  const s = retryInfo?.retryDelay as string | undefined;
+  if (!s) return null;
+
+  const m = s.match(/^(\d+(?:\.\d+)?)s$/); // "22s" or "0.5s"
+  if (!m) return null;
+
+  return Math.ceil(parseFloat(m[1]) * 1000);
+}
+
+function isRetryable(err: any) {
+  const code = getErrCode(err);
+  const msg = getErrMessage(err);
+
+  return (
+    code === 429 ||
+    code === 503 ||
+    /overloaded|unavailable|rate limit|quota|too many requests|resource_exhausted|429|503/i.test(
+      msg
+    )
+  );
+}
+
+/**
+ * Detect "daily / plan quota exhausted" vs transient 429.
+ * (Free-tier daily cap often looks like: generate_content_free_tier_requests, limit: 20)
+ */
+function isHardQuotaExhausted(err: any) {
+  const msg = getErrMessage(err);
+  return (
+    /generate_content_free_tier_requests/i.test(msg) ||
+    /GenerateRequestsPerDay/i.test(msg) ||
+    (/quota exceeded/i.test(msg) && /per day|daily/i.test(msg))
+  );
 }
 
 async function withRetry<T>(fn: () => Promise<T>, retries = 4) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await fn();
-    } catch (err) {
-      const last = attempt === retries;
-      if (!isOverloaded503(err) || last) throw err;
+    } catch (err: any) {
+      const lastAttempt = attempt === retries;
+
+      // Hard daily quota -> don't hammer retries
+      if (isHardQuotaExhausted(err)) throw err;
+
+      if (!isRetryable(err) || lastAttempt) throw err;
+
+      // Prefer server-provided retryDelay
+      const serverDelay = getRetryDelayMs(err);
+      if (serverDelay) {
+        await sleep(serverDelay + Math.floor(Math.random() * 250));
+        continue;
+      }
 
       // exponential backoff + jitter
-      const base = Math.min(8000, 500 * Math.pow(2, attempt)); // 0.5s,1s,2s,4s,8s
-      const jitter = Math.floor(Math.random() * 250);
-      await sleep(base + jitter);
+      const baseDelay = Math.min(20000, 800 * Math.pow(2, attempt)); // 0.8s,1.6,3.2,6.4,12.8...
+      const jitter = Math.floor(Math.random() * 400);
+      await sleep(baseDelay + jitter);
     }
   }
   throw new Error("AI_RETRY_FAILED");
 }
 
-/* -------------------- Gemini client -------------------- */
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+/* -------------------- Concurrency guard (prevents spam calls) -------------------- */
+let inFlightCount = 0;
+const MAX_IN_FLIGHT = 1;
+
+async function withInFlightGuard<T>(fn: () => Promise<T>): Promise<T> {
+  if (inFlightCount >= MAX_IN_FLIGHT) {
+    throw new Error("AI_CALL_IN_PROGRESS");
+  }
+  inFlightCount++;
+  try {
+    return await fn();
+  } finally {
+    inFlightCount--;
+  }
+}
+
+/* -------------------- Lightweight caching (support/Q&A mode) -------------------- */
+type UnifiedChatResult = {
+  text: string;
+  proposal?: {
+    data: ResumeData;
+    description: string;
+    metadata: {
+      source: "ai";
+      improvedSections: string[];
+    };
+  };
+};
+
+type CacheEntry = { at: number; value: UnifiedChatResult };
+const SUPPORT_CACHE = new Map<string, CacheEntry>();
+const SUPPORT_CACHE_TTL_MS = 60_000; // 1 min
+
+function cacheKey(history: { role: string; text: string }[], text: string) {
+  return JSON.stringify({ history, text });
+}
+
+function getCachedSupport(key: string): UnifiedChatResult | null {
+  const hit = SUPPORT_CACHE.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > SUPPORT_CACHE_TTL_MS) {
+    SUPPORT_CACHE.delete(key);
+    return null;
+  }
+  return hit.value;
+}
+
+function setCachedSupport(key: string, value: UnifiedChatResult) {
+  SUPPORT_CACHE.set(key, { at: Date.now(), value });
+}
 
 /* -------------------- Schema -------------------- */
 const RESUME_SCHEMA: Schema = {
@@ -108,22 +216,23 @@ IMPORTANT: Infer the 'website' domain for every company and university (e.g. 'mi
 
   const contentPart = getContentPart(baseInput);
 
-  const response = await withRetry(() =>
-    ai.models.generateContent({
-      model,
-      contents: {
-        parts: [contentPart, { text: "Extract the data into the specified JSON format." }],
-      },
-      config: {
-        systemInstruction,
-        responseMimeType: "application/json",
-        responseSchema: RESUME_SCHEMA,
-      },
-    })
+  const response = await withInFlightGuard(() =>
+    withRetry(() =>
+      ai.models.generateContent({
+        model,
+        contents: {
+          parts: [contentPart, { text: "Extract the data into the specified JSON format." }],
+        },
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema: RESUME_SCHEMA,
+        },
+      })
+    )
   );
 
   if (!response.text) throw new Error("No response generated from AI");
-
   return JSON.parse(response.text) as ResumeData;
 };
 
@@ -209,20 +318,21 @@ Ensure the output strictly follows the JSON schema.
     parts.push(getContentPart(jobDescriptionInput));
   }
 
-  const response = await withRetry(() =>
-    ai.models.generateContent({
-      model,
-      contents: { parts },
-      config: {
-        systemInstruction,
-        responseMimeType: "application/json",
-        responseSchema: RESUME_SCHEMA,
-      },
-    })
+  const response = await withInFlightGuard(() =>
+    withRetry(() =>
+      ai.models.generateContent({
+        model,
+        contents: { parts },
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema: RESUME_SCHEMA,
+        },
+      })
+    )
   );
 
   if (!response.text) throw new Error("No response generated from AI");
-
   return JSON.parse(response.text) as ResumeData;
 };
 
@@ -253,86 +363,100 @@ USER REQUEST:
 ${userPrompt}
   `.trim();
 
-  const response = await withRetry(() =>
-    ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        systemInstruction,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            data: RESUME_SCHEMA,
-            description: {
-              type: Type.STRING,
-              description:
-                "Brief description of changes made, e.g., 'Added Python to skills' or 'Rewrote summary'.",
+  const response = await withInFlightGuard(() =>
+    withRetry(() =>
+      ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              data: RESUME_SCHEMA,
+              description: {
+                type: Type.STRING,
+                description:
+                  "Brief description of changes made, e.g., 'Added Python to skills' or 'Rewrote summary'.",
+              },
             },
+            required: ["data", "description"],
           },
-          required: ["data", "description"],
         },
-      },
-    })
+      })
+    )
   );
 
   if (!response.text) throw new Error("No response generated from AI");
-
   return JSON.parse(response.text) as { data: ResumeData; description: string };
 };
 
 /* -------------------- Unified Chat Agent -------------------- */
-interface UnifiedChatResult {
-  text: string;
-  proposal?: {
-    data: ResumeData;
-    description: string;
-    metadata: {
-      source: "ai";
-      improvedSections: string[];
-    };
-  };
-}
-
 export async function unifiedChatAgent(
   history: { role: "user" | "model" | "assistant"; text: string }[],
   text: string,
   currentResumeData: ResumeData | null
 ): Promise<UnifiedChatResult> {
+  const model = "gemini-2.5-flash";
 
   // 🟡 No resume loaded → Support / Q&A Mode
   if (!currentResumeData) {
-    const model = "gemini-2.5-flash";
     const systemInstruction = `
-      You are the expert AI support assistant for OneClickCVPro.
-      Your role is to answer questions about the app, features, pricing, and general resume advice.
-      
-      Key Info:
-      - Users build resumes in the 'Editor'.
-      - They manage saved resumes in the 'Dashboard'.
-      - 'Credits' are used for AI tailoring (1 credit) and PDF downloads (1 credit).
-      - If a user wants to edit their resume, tell them to open it in the Editor first.
-      
-      Be helpful, brief, and friendly. Do not hallucinate features.
+You are the expert AI support assistant for OneClickCVPro.
+Your role is to answer questions about the app, features, pricing, and general resume advice.
+
+Key Info:
+- Users build resumes in the 'Editor'.
+- They manage saved resumes in the 'Dashboard'.
+- 'Credits' are used for AI tailoring (1 credit) and PDF downloads (1 credit).
+- If a user wants to edit their resume, tell them to open it in the Editor first.
+
+Be helpful, brief, and friendly. Do not hallucinate features.
     `.trim();
 
+    const key = cacheKey(history, text);
+    const cached = getCachedSupport(key);
+    if (cached) return cached;
+
     try {
-      const response = await withRetry(() =>
-        ai.models.generateContent({
-          model,
-          config: { systemInstruction },
-          contents: history.map(m => ({
-            // ✅ Fix: Map 'assistant' (from state) to 'model' (for Gemini API)
-            role: m.role === 'assistant' || m.role === 'model' ? 'model' : 'user',
-            parts: [{ text: m.text }]
-          }))
-        })
+      const response = await withInFlightGuard(() =>
+        withRetry(() =>
+          ai.models.generateContent({
+            model,
+            config: { systemInstruction },
+            contents: history.map((m) => ({
+              // Map 'assistant' -> 'model' for Gemini API
+              role: m.role === "assistant" || m.role === "model" ? "model" : "user",
+              parts: [{ text: m.text }],
+            })),
+          })
+        )
       );
-      
-      return { text: response.text || "I'm sorry, I couldn't generate a response." };
+
+      const result: UnifiedChatResult = {
+        text: response.text || "I'm sorry, I couldn't generate a response.",
+      };
+      setCachedSupport(key, result);
+      return result;
     } catch (err: any) {
-       console.error("Support Chat Error:", err);
-       return { text: "I'm having trouble connecting to the support brain right now. Please try again." };
+      console.error("Support Chat Error:", err);
+
+      if (isHardQuotaExhausted(err)) {
+        return {
+          text: "Daily AI quota reached for this project. Please try again tomorrow or upgrade your AI plan.",
+        };
+      }
+
+      const msg = getErrMessage(err);
+      if (/AI_CALL_IN_PROGRESS/i.test(msg)) {
+        return { text: "One second — I'm already working on your last request." };
+      }
+      if (/overloaded|503|unavailable|429|rate limit|quota/i.test(msg)) {
+        return { text: "I'm getting rate-limited right now 😅 Please try again in a moment." };
+      }
+
+      return { text: "I'm having trouble connecting to the support brain right now. Please try again." };
     }
   }
 
@@ -351,18 +475,23 @@ export async function unifiedChatAgent(
         },
       },
     };
-
   } catch (err: any) {
-    const msg = String(err?.message || err);
+    const msg = getErrMessage(err);
 
-    if (/overloaded|503|unavailable/i.test(msg)) {
+    if (isHardQuotaExhausted(err)) {
       return {
-        text: "I’m a bit busy right now 😅 Please try again in a moment.",
+        text: "Daily AI quota reached for this project. Please try again tomorrow or upgrade your AI plan.",
       };
     }
 
-    return {
-      text: "Something went wrong while editing your resume. Please try again.",
-    };
+    if (/AI_CALL_IN_PROGRESS/i.test(msg)) {
+      return { text: "One second — I'm already working on your last request." };
+    }
+
+    if (/overloaded|503|unavailable|429|rate limit|quota/i.test(msg)) {
+      return { text: "I'm a bit busy right now 😅 Please try again in a moment." };
+    }
+
+    return { text: "Something went wrong while editing your resume. Please try again." };
   }
 }
