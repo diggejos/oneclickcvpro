@@ -10,7 +10,7 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import path from 'path';
 import { fileURLToPath } from 'url';
-// --- FIXED IMPORT HERE (Changed SchemaType to Type) ---
+// --- FIX: Import 'Type' instead of 'SchemaType' ---
 import { GoogleGenAI, Type } from "@google/genai";
 import pLimit from 'p-limit'; 
 
