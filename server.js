@@ -10,12 +10,20 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import path from 'path';
 import { fileURLToPath } from 'url';
+// --- NEW IMPORTS FOR AI ---
+import { GoogleGenAI, SchemaType } from "@google/genai";
+import pLimit from 'p-limit'; 
 
 // --- CONFIG ---
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+// --- NEW: GEMINI CONFIG ---
+// Make sure you add GEMINI_API_KEY to your .env file!
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY });
+const aiQueue = pLimit(5); // Only allow 5 concurrent AI requests to Google
 
 const toObjectId = (id) => {
   try {
@@ -59,7 +67,7 @@ app.use(
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(null, true); // Allow all for now to fix connection issues
+      return callback(null, true); 
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "x-user-id", "stripe-signature"],
@@ -73,31 +81,13 @@ const PORT = process.env.PORT || 4242;
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 
-// --- API ROUTES ---
-
-app.get("/api/users/me", async (req, res) => {
-  try {
-    const userIdRaw = req.headers["x-user-id"];
-    if (!userIdRaw) return res.status(401).json({ error: "Unauthorized" });
-
-    const userId = toObjectId(userIdRaw);
-    if (!userId) return res.status(400).json({ error: "Invalid user id" });
-
-    const user = await User.findById(userId).select("email name avatar credits").lean();
-    if (!user) return res.status(404).json({ error: "User not found" });
-
-    return res.json({ credits: user.credits });
-  } catch (err) {
-    console.error("ME ERROR:", err);
-    return res.status(500).json({ error: "Failed to load user" });
-  }
-});
-
+// --- MIDDLEWARE ---
 app.use((req, res, next) => {
   if (req.originalUrl === '/webhook') return next();
   express.json({ limit: "25mb" })(req, res, next);
 });
 
+// --- DATABASE ---
 if (process.env.MONGODB_URI) {
   mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('✅ Connected to MongoDB'))
@@ -138,6 +128,245 @@ const User = mongoose.model('User', userSchema);
 const Resume = mongoose.model('Resume', resumeSchema);
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+
+// ------------------------------------------------------------------
+//   ⚡️ NEW AI SECTION (Logic moved from Frontend to Backend)
+// ------------------------------------------------------------------
+
+// 1. Define Schema (Matches your frontend types)
+const RESUME_RESPONSE_SCHEMA = {
+  type: SchemaType.OBJECT,
+  properties: {
+    fullName: { type: SchemaType.STRING },
+    contactInfo: { type: SchemaType.STRING, description: "Format: Email | Phone | LinkedIn" },
+    location: { type: SchemaType.STRING },
+    summary: { type: SchemaType.STRING },
+    skills: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    experience: {
+      type: SchemaType.ARRAY,
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          role: { type: SchemaType.STRING },
+          company: { type: SchemaType.STRING },
+          website: { type: SchemaType.STRING, description: "Domain (e.g. google.com)" },
+          duration: { type: SchemaType.STRING },
+          points: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+        },
+      },
+    },
+    education: {
+      type: SchemaType.ARRAY,
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          degree: { type: SchemaType.STRING },
+          school: { type: SchemaType.STRING },
+          website: { type: SchemaType.STRING },
+          year: { type: SchemaType.STRING },
+        },
+      },
+    },
+  },
+  required: ["fullName", "summary", "skills", "experience"],
+};
+
+// 2. Helper to format content
+const getContentPart = (input) => {
+  if (input?.type === "file" && input?.mimeType && input?.content) {
+    const base64Data = input.content.split(",")[1] || input.content; 
+    return { inlineData: { mimeType: input.mimeType, data: base64Data } };
+  }
+  return { text: input?.content || "" };
+};
+
+// 3. Helper to manage the Queue and Retries
+async function callGemini(callFn) {
+  return aiQueue(async () => {
+    let lastError;
+    // Retry up to 3 times for transient errors
+    for (let i = 0; i < 3; i++) {
+      try {
+        return await callFn();
+      } catch (err) {
+        lastError = err;
+        const msg = err.message || "";
+        // If it's a hard quota limit (daily limit), stop retrying
+        if (/quota/i.test(msg) && /exceeded/i.test(msg)) throw err;
+        // Wait 1s, 2s, 3s between retries
+        await new Promise(r => setTimeout(r, 1000 * (i + 1))); 
+      }
+    }
+    throw lastError;
+  });
+}
+
+// --- NEW AI ROUTES ---
+
+// A. Parse Resume (Free/Cheap)
+app.post("/api/ai/parse", async (req, res) => {
+  const userIdRaw = req.headers["x-user-id"];
+  if (!userIdRaw) return res.status(401).json({ error: "Unauthorized" });
+
+  try {
+    const { baseInput } = req.body;
+    const systemInstruction = `Extract structured data from the resume. Infer 'website' domains. Standardize dates.`;
+    
+    const response = await callGemini(() => 
+      ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: { parts: [getContentPart(baseInput), { text: "Extract to JSON." }] },
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema: RESUME_RESPONSE_SCHEMA,
+        },
+      })
+    );
+
+    res.json(JSON.parse(response.text()));
+  } catch (error) {
+    console.error("Parse Error:", error);
+    res.status(500).json({ error: "Failed to parse resume" });
+  }
+});
+
+// B. Tailor Resume (Atomic Credit Deduction)
+app.post("/api/ai/tailor", async (req, res) => {
+  const userIdRaw = req.headers["x-user-id"];
+  if (!userIdRaw) return res.status(401).json({ error: "Unauthorized" });
+  const userId = toObjectId(userIdRaw);
+
+  // 1. ATOMIC SPEND: Charge before generating
+  const user = await User.findOneAndUpdate(
+    { _id: userId, credits: { $gt: 0 } },
+    { $inc: { credits: -1 } },
+    { new: true }
+  );
+  if (!user) return res.status(402).json({ error: "Insufficient credits" });
+
+  try {
+    const { baseResumeData, jobDescriptionInput, config } = req.body;
+
+    const toneInstr = config.tone === 'creative' ? "Use engaging language." : 
+                      config.tone === 'corporate' ? "Use executive language." : "Professional tone.";
+    
+    const systemInstruction = `
+      You are an expert resume strategist.
+      Tone: ${toneInstr}
+      Language: ${config.language || 'English'} (Translate values, keep keys in English).
+      Tailor the resume to the Job Description.
+    `.trim();
+
+    const parts = [{ text: `CURRENT RESUME: ${JSON.stringify(baseResumeData)}` }];
+    if (jobDescriptionInput) {
+      parts.push({ text: "JOB DESCRIPTION:" });
+      parts.push(getContentPart(jobDescriptionInput));
+    }
+
+    const response = await callGemini(() => 
+      ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: { parts },
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema: RESUME_RESPONSE_SCHEMA,
+        },
+      })
+    );
+
+    res.json(JSON.parse(response.text()));
+
+  } catch (error) {
+    console.error("Tailor Error:", error);
+    // 2. AUTOMATIC REFUND: If AI fails, give credit back
+    await User.findByIdAndUpdate(userId, { $inc: { credits: 1 } });
+    res.status(500).json({ error: "Generation failed. Credit refunded." });
+  }
+});
+
+// C. Chat/Edit (Free or limited)
+app.post("/api/ai/chat", async (req, res) => {
+  const userIdRaw = req.headers["x-user-id"];
+  if (!userIdRaw) return res.status(401).json({ error: "Unauthorized" });
+
+  const { history, text, currentResumeData } = req.body;
+
+  try {
+    // Mode 1: Support Chat (No resume loaded)
+    if (!currentResumeData) {
+      const systemInstruction = `You are the OneClickCVPro support assistant. Help with features/pricing.`;
+      const contents = history.map(h => ({ role: h.role === 'assistant' ? 'model' : 'user', parts: [{ text: h.text }] }));
+      contents.push({ role: 'user', parts: [{ text }]});
+
+      const response = await callGemini(() => 
+        ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          config: { systemInstruction },
+          contents,
+        })
+      );
+      return res.json({ text: response.text() });
+    }
+
+    // Mode 2: Resume Editor
+    const systemInstruction = `Modify the JSON based on the user request. Return { data, description }.`;
+    const prompt = `CURRENT DATA: ${JSON.stringify(currentResumeData)}\nUSER REQUEST: ${text}`;
+    
+    const response = await callGemini(() => 
+      ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: SchemaType.OBJECT,
+            properties: {
+              data: RESUME_RESPONSE_SCHEMA,
+              description: { type: SchemaType.STRING }
+            },
+            required: ["data", "description"]
+          }
+        }
+      })
+    );
+    
+    const parsed = JSON.parse(response.text());
+    res.json({
+      text: "I've applied your changes.",
+      proposal: { data: parsed.data, description: parsed.description, metadata: { source: "ai", improvedSections: [] } }
+    });
+
+  } catch (error) {
+    console.error("Chat Error:", error);
+    res.status(500).json({ error: "Chat failed" });
+  }
+});
+
+
+// ------------------------------------------------------------------
+//   ORIGINAL ROUTES (Preserved exactly as they were)
+// ------------------------------------------------------------------
+
+app.get("/api/users/me", async (req, res) => {
+  try {
+    const userIdRaw = req.headers["x-user-id"];
+    if (!userIdRaw) return res.status(401).json({ error: "Unauthorized" });
+
+    const userId = toObjectId(userIdRaw);
+    if (!userId) return res.status(400).json({ error: "Invalid user id" });
+
+    const user = await User.findById(userId).select("email name avatar credits").lean();
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    return res.json({ credits: user.credits });
+  } catch (err) {
+    console.error("ME ERROR:", err);
+    return res.status(500).json({ error: "Failed to load user" });
+  }
+});
 
 app.post('/api/auth/google', async (req, res) => {
   const { token } = req.body;
@@ -498,10 +727,8 @@ app.post('/webhook', bodyParser.raw({ type: 'application/json' }), async (reques
 });
 
 // --- ✅ SERVE FRONTEND (PRODUCTION) ---
-// This handles the "Failed to load module script" error by serving 
-// the built index.html for any unknown routes.
 if (process.env.NODE_ENV === 'production') {
-  const distPath = path.join(__dirname, 'dist'); // Must match Vite build output
+  const distPath = path.join(__dirname, 'dist'); 
   app.use(express.static(distPath));
 
   app.get('*', (req, res) => {
