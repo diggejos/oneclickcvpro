@@ -52,8 +52,8 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3) {
 // ✅ Initialize the official Web SDK
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
 
-// ✅ USE STABLE 1.5 FLASH (Recommended for production)
-const MODEL_NAME = "gemini-1.5-flash";
+// ✅ UPDATED: USE STABLE 1.5 FLASH (002 fixes the 404 on deprecated alias)
+const MODEL_NAME = "gemini-1.5-flash-002";
 
 
 /* ==========================================================================
