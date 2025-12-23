@@ -10,7 +10,8 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import path from 'path';
 import { fileURLToPath } from 'url';
-// --- FIX: Import 'Type' instead of 'SchemaType' ---
+
+// --- NEW: AI IMPORTS ---
 import { GoogleGenAI, Type } from "@google/genai";
 import pLimit from 'p-limit'; 
 
@@ -20,9 +21,11 @@ const __dirname = path.dirname(__filename);
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// --- GEMINI CONFIG ---
+// --- NEW: GEMINI CONFIG ---
+// Initialize Google AI with the API key from environment variables
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY });
-const aiQueue = pLimit(5); // Only allow 5 concurrent AI requests to Google
+// Limit concurrent AI requests to 5 to avoid hitting rate limits too fast
+const aiQueue = pLimit(5); 
 
 const toObjectId = (id) => {
   try {
@@ -120,7 +123,6 @@ const resumeSchema = new mongoose.Schema({
   config: Object,
   profileImage: String
 });
-
 resumeSchema.index({ userId: 1, resumeId: 1 }, { unique: true });
 
 const User = mongoose.model('User', userSchema);
@@ -128,11 +130,12 @@ const Resume = mongoose.model('Resume', resumeSchema);
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
-// ------------------------------------------------------------------
-//   ⚡️ NEW AI SECTION (Logic moved from Frontend to Backend)
-// ------------------------------------------------------------------
+// ==================================================================
+//   🤖 NEW: AI BACKEND LOGIC
+//   (This replaces the frontend geminiService.ts calls)
+// ==================================================================
 
-// 1. Define Schema (Updated to use Type.*)
+// 1. Define Schema for AI Responses
 const RESUME_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
@@ -170,7 +173,7 @@ const RESUME_RESPONSE_SCHEMA = {
   required: ["fullName", "summary", "skills", "experience"],
 };
 
-// 2. Helper to format content
+// 2. Helper to format file content for Gemini
 const getContentPart = (input) => {
   if (input?.type === "file" && input?.mimeType && input?.content) {
     const base64Data = input.content.split(",")[1] || input.content; 
@@ -179,11 +182,11 @@ const getContentPart = (input) => {
   return { text: input?.content || "" };
 };
 
-// 3. Helper to manage the Queue and Retries
+// 3. Queue Wrapper to prevent 429 Rate Limits
 async function callGemini(callFn) {
   return aiQueue(async () => {
     let lastError;
-    // Retry up to 3 times for transient errors
+    // Simple retry logic (3 attempts)
     for (let i = 0; i < 3; i++) {
       try {
         return await callFn();
@@ -200,7 +203,7 @@ async function callGemini(callFn) {
   });
 }
 
-// --- NEW AI ROUTES ---
+// --- AI ROUTES ---
 
 // A. Parse Resume (Free/Cheap)
 app.post("/api/ai/parse", async (req, res) => {
@@ -230,13 +233,13 @@ app.post("/api/ai/parse", async (req, res) => {
   }
 });
 
-// B. Tailor Resume (Atomic Credit Deduction)
+// B. Tailor Resume (Costs 1 Credit)
 app.post("/api/ai/tailor", async (req, res) => {
   const userIdRaw = req.headers["x-user-id"];
   if (!userIdRaw) return res.status(401).json({ error: "Unauthorized" });
   const userId = toObjectId(userIdRaw);
 
-  // 1. ATOMIC SPEND: Charge before generating
+  // Atomic Spend: Charge before generation
   const user = await User.findOneAndUpdate(
     { _id: userId, credits: { $gt: 0 } },
     { $inc: { credits: -1 } },
@@ -279,13 +282,13 @@ app.post("/api/ai/tailor", async (req, res) => {
 
   } catch (error) {
     console.error("Tailor Error:", error);
-    // 2. AUTOMATIC REFUND: If AI fails, give credit back
+    // Refund credit on failure
     await User.findByIdAndUpdate(userId, { $inc: { credits: 1 } });
     res.status(500).json({ error: "Generation failed. Credit refunded." });
   }
 });
 
-// C. Chat/Edit (Free or limited)
+// C. Chat / Edit (For your ChatAssistant)
 app.post("/api/ai/chat", async (req, res) => {
   const userIdRaw = req.headers["x-user-id"];
   if (!userIdRaw) return res.status(401).json({ error: "Unauthorized" });
@@ -345,9 +348,9 @@ app.post("/api/ai/chat", async (req, res) => {
 });
 
 
-// ------------------------------------------------------------------
-//   ORIGINAL ROUTES (Preserved)
-// ------------------------------------------------------------------
+// ==================================================================
+//   EXISTING API ROUTES (Restored exactly as original)
+// ==================================================================
 
 app.get("/api/users/me", async (req, res) => {
   try {
@@ -655,6 +658,7 @@ app.post('/api/credits/verify-session', async (req, res) => {
             return res.json({ success: true, credits: updatedUser.credits });
          } 
          
+         // Retry Logic maintained
          for (let i = 0; i < 5; i++) {
             const freshUser = await User.findOne({ _id: userId, processedSessions: sessionId }).select("credits");
             if (freshUser) {
@@ -726,8 +730,10 @@ app.post('/webhook', bodyParser.raw({ type: 'application/json' }), async (reques
 });
 
 // --- ✅ SERVE FRONTEND (PRODUCTION) ---
+// This handles the "Failed to load module script" error by serving 
+// the built index.html for any unknown routes.
 if (process.env.NODE_ENV === 'production') {
-  const distPath = path.join(__dirname, 'dist'); 
+  const distPath = path.join(__dirname, 'dist'); // Must match Vite build output
   app.use(express.static(distPath));
 
   app.get('*', (req, res) => {
