@@ -1,11 +1,14 @@
 import { ResumeData, ResumeConfig, FileInput } from "../types";
 
-// Base URL handling for Dev/Prod
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4242";
+// --- CHANGED: URL LOGIC ---
+// In production, use empty string "" to make requests relative (e.g. /api/ai/parse)
+// In development, default to localhost:4242
+const API_URL = import.meta.env.PROD 
+  ? "" 
+  : (import.meta.env.VITE_API_URL || "http://localhost:4242");
 
-// Helper to get headers
 const getHeaders = () => {
-  const userId = localStorage.getItem("oneclickcv_user_id"); // Or however you store Auth
+  const userId = localStorage.getItem("oneclickcv_user_id"); 
   return {
     "Content-Type": "application/json",
     "x-user-id": userId || "",
@@ -92,8 +95,7 @@ export async function unifiedChatAgent(
   return await response.json();
 }
 
-// Deprecated: Kept only if other components import it directly, 
-// but unifiedChatAgent covers this now.
+// Deprecated wrapper
 export const updateResumeWithChat = async (
   currentData: ResumeData,
   userPrompt: string
