@@ -24,6 +24,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // --- GEMINI CONFIG ---
 // Initialize with the stable library
+// Ensure GEMINI_API_KEY is set in your Render Environment Variables!
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY);
 const aiQueue = pLimit(5); 
 
@@ -190,6 +191,7 @@ async function callGemini(callFn) {
       } catch (err) {
         lastError = err;
         const msg = err.message || "";
+        // Handle Quota limits
         if (/quota/i.test(msg) && /exceeded/i.test(msg)) throw err;
         await new Promise(r => setTimeout(r, 1000 * (i + 1))); 
       }
@@ -290,8 +292,6 @@ app.post("/api/ai/chat", async (req, res) => {
 
       const response = await callGemini(async () => {
          const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", systemInstruction });
-         // Chat requires 'sendMessage' or just generateContent with full history
-         // Using generateContent with history as prompt context for simplicity
          const chat = model.startChat({ history: contents });
          return await chat.sendMessage(text);
       });
