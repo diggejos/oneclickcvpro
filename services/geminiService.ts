@@ -1,114 +1,80 @@
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { GoogleGenAI, Type, Schema, Part } from "@google/genai";
 import { ResumeData, ResumeConfig, FileInput } from "../types";
 
-/* ==========================================================================
-   HELPER FUNCTIONS: RETRY & ERROR HANDLING
-   ========================================================================== */
-
+/* -------------------- retry/backoff helpers -------------------- */
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/**
- * Detects if the error is a temporary 503 Service Unavailable or Overloaded error.
- */
 function isOverloaded503(err: any) {
-  const code = err?.response?.status || err?.status || err?.code;
-  const msg = String(err?.message || "");
+  const code = err?.error?.code ?? err?.status ?? err?.code;
+  const msg = String(err?.error?.message || err?.message || "");
   return code === 503 || /overloaded|unavailable|503/i.test(msg);
 }
 
-/**
- * Retries a function with exponential backoff.
- * Stops immediately if we hit a 429 (Quota Limit).
- */
-async function withRetry<T>(fn: () => Promise<T>, retries = 3) {
+async function withRetry<T>(fn: () => Promise<T>, retries = 4) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await fn();
-    } catch (err: any) {
-      // ✅ If quota exceeded (429), fail immediately (retrying won't help)
-      if (err?.response?.status === 429 || err?.status === 429) {
-        throw err;
-      }
-
+    } catch (err) {
       const last = attempt === retries;
-      if (!isOverloaded503(err) || last) {
-        throw err;
-      }
+      if (!isOverloaded503(err) || last) throw err;
 
-      // Exponential backoff + random jitter to prevent thundering herd
-      const base = Math.min(8000, 1000 * Math.pow(2, attempt));
-      const jitter = Math.floor(Math.random() * 500);
+      // exponential backoff + jitter
+      const base = Math.min(8000, 500 * Math.pow(2, attempt)); // 0.5s,1s,2s,4s,8s
+      const jitter = Math.floor(Math.random() * 250);
       await sleep(base + jitter);
     }
   }
   throw new Error("AI_RETRY_FAILED");
 }
 
+/* -------------------- Gemini client -------------------- */
+const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
 
-/* ==========================================================================
-   GEMINI CLIENT CONFIGURATION
-   ========================================================================== */
-
-// ✅ Initialize the official Web SDK
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-
-// ✅ UPDATED: USE STABLE 1.5 FLASH (002 fixes the 404 on deprecated alias)
-const MODEL_NAME = "gemini-1.5-flash-002";
-
-
-/* ==========================================================================
-   DATA SCHEMAS
-   ========================================================================== */
-
-const RESUME_SCHEMA = {
-  type: SchemaType.OBJECT,
+/* -------------------- Schema -------------------- */
+const RESUME_SCHEMA: Schema = {
+  type: Type.OBJECT,
   properties: {
-    fullName: { type: SchemaType.STRING },
-    contactInfo: { 
-      type: SchemaType.STRING, 
-      description: "Format: Email | Phone | LinkedIn" 
-    },
-    location: { type: SchemaType.STRING },
-    summary: { type: SchemaType.STRING },
+    fullName: { type: Type.STRING },
+    contactInfo: { type: Type.STRING, description: "Format: Email | Phone | LinkedIn" },
+    location: { type: Type.STRING },
+    summary: { type: Type.STRING },
     skills: {
-      type: SchemaType.ARRAY,
-      items: { type: SchemaType.STRING },
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
       description: "Top skills relevant to the job",
     },
     experience: {
-      type: SchemaType.ARRAY,
+      type: Type.ARRAY,
       items: {
-        type: SchemaType.OBJECT,
+        type: Type.OBJECT,
         properties: {
-          id: { type: SchemaType.STRING },
-          role: { type: SchemaType.STRING },
-          company: { type: SchemaType.STRING },
+          role: { type: Type.STRING },
+          company: { type: Type.STRING },
           website: {
-            type: SchemaType.STRING,
-            description: "The official website domain (e.g. 'google.com'). Guess if unknown.",
+            type: Type.STRING,
+            description: "The official website domain of the company (e.g. 'google.com'). Guess if unknown.",
           },
-          duration: { type: SchemaType.STRING },
+          duration: { type: Type.STRING },
           points: {
-            type: SchemaType.ARRAY,
-            items: { type: SchemaType.STRING },
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
             description: "Bullet points focusing on impact and metrics",
           },
         },
       },
     },
     education: {
-      type: SchemaType.ARRAY,
+      type: Type.ARRAY,
       items: {
-        type: SchemaType.OBJECT,
+        type: Type.OBJECT,
         properties: {
-          id: { type: SchemaType.STRING },
-          degree: { type: SchemaType.STRING },
-          school: { type: SchemaType.STRING },
+          degree: { type: Type.STRING },
+          school: { type: Type.STRING },
           website: {
-            type: SchemaType.STRING,
-            description: "The official website domain (e.g. 'harvard.edu'). Guess if unknown.",
+            type: Type.STRING,
+            description: "The official website domain of the school (e.g. 'harvard.edu'). Guess if unknown.",
           },
-          year: { type: SchemaType.STRING },
+          year: { type: Type.STRING },
         },
       },
     },
@@ -116,43 +82,20 @@ const RESUME_SCHEMA = {
   required: ["fullName", "summary", "skills", "experience"],
 };
 
-
-/* ==========================================================================
-   FILE HANDLING HELPERS
-   ========================================================================== */
-
-/**
- * Converts the file input into the format expected by the Google Generative AI SDK.
- * Handles both Text and Base64 File inputs.
- */
-const getContentParts = (input: FileInput) => {
+/* -------------------- Helper: Text or PDF Part -------------------- */
+const getContentPart = (input: FileInput): Part => {
   if (input.type === "file" && input.mimeType && input.content) {
-    const base64Data = input.content.split(",")[1] || input.content;
-    return [
-      {
-        inlineData: {
-          mimeType: input.mimeType,
-          data: base64Data,
-        },
-      },
-    ];
+    const base64Data = input.content.split(",")[1] || input.content; // strip data: prefix if present
+    return {
+      inlineData: { mimeType: input.mimeType, data: base64Data },
+    };
   }
-  return [{ text: input.content }];
+  return { text: input.content };
 };
 
-
-/* ==========================================================================
-   CORE FUNCTION: PARSE BASE RESUME
-   ========================================================================== */
-
+/* -------------------- Base Resume Parsing -------------------- */
 export const parseBaseResume = async (baseInput: FileInput): Promise<ResumeData> => {
-  const model = genAI.getGenerativeModel({
-    model: MODEL_NAME,
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: RESUME_SCHEMA,
-    },
-  });
+  const model = "gemini-2.5-flash";
 
   const systemInstruction = `
 You are an expert data extraction assistant.
@@ -163,74 +106,79 @@ Standardize the "skills" list into a clean array of strings.
 IMPORTANT: Infer the 'website' domain for every company and university (e.g. 'microsoft.com', 'stanford.edu') so logos can be fetched.
   `.trim();
 
-  const userContent = getContentParts(baseInput);
-  userContent.push({ text: "Extract the data into the specified JSON format." });
+  const contentPart = getContentPart(baseInput);
 
-  // We pass systemInstruction as part of the prompt to avoid strict Content-type 400 errors
-  const promptParts = [{ text: systemInstruction }, ...userContent];
+  const response = await withRetry(() =>
+    ai.models.generateContent({
+      model,
+      contents: {
+        parts: [contentPart, { text: "Extract the data into the specified JSON format." }],
+      },
+      config: {
+        systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: RESUME_SCHEMA,
+      },
+    })
+  );
 
-  const result = await withRetry(() => model.generateContent(promptParts));
-  const responseText = result.response.text();
+  if (!response.text) throw new Error("No response generated from AI");
 
-  if (!responseText) throw new Error("No response generated from AI");
-
-  return JSON.parse(responseText) as ResumeData;
+  return JSON.parse(response.text) as ResumeData;
 };
 
-
-/* ==========================================================================
-   CORE FUNCTION: GENERATE TAILORED RESUME
-   ========================================================================== */
-
+/* -------------------- Tailored Resume Generation -------------------- */
 export const generateTailoredResume = async (
   baseResumeData: ResumeData,
   jobDescriptionInput: FileInput | null,
   config: ResumeConfig
 ): Promise<ResumeData> => {
+  const model = "gemini-2.5-flash";
 
-  const model = genAI.getGenerativeModel({
-    model: MODEL_NAME,
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: RESUME_SCHEMA,
-    },
-  });
-
-  /* ----------------- 1. Tone Configuration ----------------- */
   let toneInstruction = "";
   switch (config.tone) {
     case "corporate":
-      toneInstruction = "Use highly professional, executive-level language. Focus on ROI, strategic impact, and formal business terminology."; break;
+      toneInstruction =
+        "Use highly professional, executive-level language. Focus on ROI, strategic impact, and formal business terminology. Avoid casual phrasing.";
+      break;
     case "creative":
-      toneInstruction = "Use engaging, innovative, and energetic language. Show personality. Focus on creativity, adaptability, and fresh perspectives."; break;
+      toneInstruction =
+        "Use engaging, innovative, and energetic language. Show personality. Focus on creativity, adaptability, and fresh perspectives.";
+      break;
     default:
       toneInstruction = "Use a standard, balanced professional tone suitable for most industries.";
   }
 
-  /* ----------------- 2. Length Configuration ----------------- */
   let lengthInstruction = "";
   switch (config.length) {
     case "concise":
-      lengthInstruction = "Keep it extremely concise. Summary should be under 3 sentences. Limit experience to the 3 most recent/relevant roles."; break;
+      lengthInstruction =
+        "Keep it extremely concise. Summary should be under 3 sentences. Limit experience to the 3 most recent/relevant roles with max 3 bullet points each. Focus only on the absolute highlights.";
+      break;
     case "detailed":
-      lengthInstruction = "Provide a comprehensive detailed overview. Elaborate on projects in the summary. Include up to 5-6 bullet points per role."; break;
+      lengthInstruction =
+        "Provide a comprehensive detailed overview. Elaborate on projects in the summary. Include up to 5-6 bullet points per role, detailing specific methodologies and outcomes.";
+      break;
     default:
       lengthInstruction = "Standard length. Summary approx 4-5 sentences. 3-5 bullet points per relevant role.";
   }
 
-  /* ----------------- 3. Refinement Configuration ----------------- */
   let refinementInstruction = "";
   if (config.refinementLevel <= 20) {
-    refinementInstruction = "STRICTLY PRESERVE ORIGINAL PHRASING. Only fix grammatical errors or major formatting issues.";
+    refinementInstruction =
+      "STRICTLY PRESERVE ORIGINAL PHRASING. Only fix grammatical errors or major formatting issues. Do not sound like an AI. Keep the user's original voice.";
   } else if (config.refinementLevel <= 60) {
-    refinementInstruction = "Polish the resume for clarity and professionalism. Improve awkward sentences but keep the original meaning and tone intact.";
+    refinementInstruction =
+      "Polish the resume for clarity and professionalism. Improve awkward sentences but keep the original meaning and tone intact. Avoid over-optimizing.";
   } else {
-    refinementInstruction = "COMPLETELY REWRITE for maximum impact. Use strong action verbs and persuasive language. Optimize heavily for ATS keywords.";
+    refinementInstruction =
+      "COMPLETELY REWRITE for maximum impact. Use strong action verbs and persuasive language. Optimize heavily for ATS keywords. It is acceptable to sound very polished.";
   }
 
-  const isRefinementOnly = !jobDescriptionInput || (!jobDescriptionInput.content && jobDescriptionInput.type === "text");
+  const isRefinementOnly =
+    !jobDescriptionInput || (!jobDescriptionInput.content && jobDescriptionInput.type === "text");
 
-  const systemInstructionText = `
+  const systemInstruction = `
 You are an expert resume strategist.
 Your task is to take existing resume data and rewrite it based on specific constraints.
 
@@ -241,8 +189,9 @@ Rewriting Intensity: ${refinementInstruction}
 Target Language: ${config.language}
 
 TASK:
-${isRefinementOnly
-    ? "The user wants to refine the style, length, and language of their current resume without targeting a specific job."
+${
+  isRefinementOnly
+    ? "The user wants to refine the style, length, and language of their current resume without targeting a specific job. Maintain the core information but adjust the phrasing, detail level, and language."
     : "The user wants to tailor this resume to a specific Job Description. Prioritize experience and skills that match the JD keywords."
 }
 
@@ -253,57 +202,36 @@ Ensure you preserve the 'website' fields for companies and schools in the output
 Ensure the output strictly follows the JSON schema.
   `.trim();
 
-  // ✅ SANITIZE INPUT: Remove profile image from context to save tokens/bandwidth
-  const cleanData = { ...baseResumeData };
-  delete cleanData.profileImage;
-
-  const parts = [
-    { text: systemInstructionText },
-    { text: `CURRENT RESUME JSON: ${JSON.stringify(cleanData)}` }
-  ];
+  const parts: Part[] = [{ text: `CURRENT RESUME JSON: ${JSON.stringify(baseResumeData)}` }];
 
   if (!isRefinementOnly && jobDescriptionInput) {
     parts.push({ text: "TARGET JOB DESCRIPTION:" });
-    parts.push(...getContentParts(jobDescriptionInput));
+    parts.push(getContentPart(jobDescriptionInput));
   }
 
-  const result = await withRetry(() => model.generateContent(parts));
-  const responseText = result.response.text();
+  const response = await withRetry(() =>
+    ai.models.generateContent({
+      model,
+      contents: { parts },
+      config: {
+        systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: RESUME_SCHEMA,
+      },
+    })
+  );
 
-  if (!responseText) throw new Error("No response generated from AI");
+  if (!response.text) throw new Error("No response generated from AI");
 
-  return JSON.parse(responseText) as ResumeData;
+  return JSON.parse(response.text) as ResumeData;
 };
 
-
-/* ==========================================================================
-   CORE FUNCTION: UPDATE RESUME (CHAT)
-   ========================================================================== */
-
+/* -------------------- Chat-driven Resume Update -------------------- */
 export const updateResumeWithChat = async (
   currentData: ResumeData,
   userPrompt: string
 ): Promise<{ data: ResumeData; description: string }> => {
-  
-  const CHAT_SCHEMA = {
-    type: SchemaType.OBJECT,
-    properties: {
-      data: RESUME_SCHEMA,
-      description: {
-        type: SchemaType.STRING,
-        description: "Brief description of changes made.",
-      },
-    },
-    required: ["data", "description"],
-  };
-
-  const model = genAI.getGenerativeModel({
-    model: MODEL_NAME,
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: CHAT_SCHEMA,
-    },
-  });
+  const model = "gemini-2.5-flash";
 
   const systemInstruction = `
 You are an intelligent resume editor.
@@ -317,28 +245,43 @@ Do not lose any existing data unless explicitly asked to remove it.
 Preserve 'website' fields.
   `.trim();
 
-  const cleanData = { ...currentData };
-  delete cleanData.profileImage;
+  const prompt = `
+CURRENT DATA:
+${JSON.stringify(currentData)}
 
-  const parts = [
-    { text: systemInstruction },
-    { text: `CURRENT DATA: ${JSON.stringify(cleanData)}` },
-    { text: `USER REQUEST: ${userPrompt}` }
-  ];
+USER REQUEST:
+${userPrompt}
+  `.trim();
 
-  const result = await withRetry(() => model.generateContent(parts));
-  const responseText = result.response.text();
+  const response = await withRetry(() =>
+    ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            data: RESUME_SCHEMA,
+            description: {
+              type: Type.STRING,
+              description:
+                "Brief description of changes made, e.g., 'Added Python to skills' or 'Rewrote summary'.",
+            },
+          },
+          required: ["data", "description"],
+        },
+      },
+    })
+  );
 
-  if (!responseText) throw new Error("No response generated from AI");
+  if (!response.text) throw new Error("No response generated from AI");
 
-  return JSON.parse(responseText) as { data: ResumeData; description: string };
+  return JSON.parse(response.text) as { data: ResumeData; description: string };
 };
 
-
-/* ==========================================================================
-   UNIFIED CHAT AGENT
-   ========================================================================== */
-
+/* -------------------- Unified Chat Agent -------------------- */
 interface UnifiedChatResult {
   text: string;
   proposal?: {
@@ -359,32 +302,34 @@ export async function unifiedChatAgent(
 
   // 🟡 No resume loaded → Support / Q&A Mode
   if (!currentResumeData) {
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
-    
-    // Map history to the format Google Generative AI expects
-    const chatHistory = history.map(h => ({
-      role: h.role === "assistant" ? "model" : h.role,
-      parts: [{ text: h.text }]
-    }));
-
-    // ✅ FIX FOR 400 ERROR: Pass system instruction as a formal Object
-    const systemInstruction = {
-      role: "system",
-      parts: [{
-        text: `You are the expert AI support assistant for OneClickCVPro.
-        Your role is to answer questions about the app, features, pricing, and general resume advice.
-        Be helpful, brief, and friendly. Do not hallucinate features.`
-      }]
-    };
-
-    const chat = model.startChat({
-      history: chatHistory,
-      systemInstruction: systemInstruction,
-    });
+    const model = "gemini-2.5-flash";
+    const systemInstruction = `
+      You are the expert AI support assistant for OneClickCVPro.
+      Your role is to answer questions about the app, features, pricing, and general resume advice.
+      
+      Key Info:
+      - Users build resumes in the 'Editor'.
+      - They manage saved resumes in the 'Dashboard'.
+      - 'Credits' are used for AI tailoring (1 credit) and PDF downloads (1 credit).
+      - If a user wants to edit their resume, tell them to open it in the Editor first.
+      
+      Be helpful, brief, and friendly. Do not hallucinate features.
+    `.trim();
 
     try {
-      const result = await withRetry(() => chat.sendMessage(text));
-      return { text: result.response.text() || "I'm sorry, I couldn't generate a response." };
+      const response = await withRetry(() =>
+        ai.models.generateContent({
+          model,
+          config: { systemInstruction },
+          contents: history.map(m => ({
+            // ✅ Fix: Map 'assistant' (from state) to 'model' (for Gemini API)
+            role: m.role === 'assistant' || m.role === 'model' ? 'model' : 'user',
+            parts: [{ text: m.text }]
+          }))
+        })
+      );
+      
+      return { text: response.text || "I'm sorry, I couldn't generate a response." };
     } catch (err: any) {
        console.error("Support Chat Error:", err);
        return { text: "I'm having trouble connecting to the support brain right now. Please try again." };
@@ -409,12 +354,6 @@ export async function unifiedChatAgent(
 
   } catch (err: any) {
     const msg = String(err?.message || err);
-
-    if (msg.includes("429")) {
-       return {
-         text: "⚠️ You've hit the usage limit. Please wait a moment or upgrade.",
-       };
-    }
 
     if (/overloaded|503|unavailable/i.test(msg)) {
       return {
