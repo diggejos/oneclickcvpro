@@ -1,29 +1,29 @@
-import { GoogleGenAI, Type, Schema, Part } from "@google/genai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { ResumeData, ResumeConfig, FileInput } from "../types";
 
 /* -------------------- retry/backoff helpers -------------------- */
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function isOverloaded503(err: any) {
-  const code = err?.error?.code ?? err?.status ?? err?.code;
-  const msg = String(err?.error?.message || err?.message || "");
+  const code = err?.response?.status || err?.status || err?.code;
+  const msg = String(err?.message || "");
   return code === 503 || /overloaded|unavailable|503/i.test(msg);
 }
 
-async function withRetry<T>(fn: () => Promise<T>, retries = 4) {
+async function withRetry<T>(fn: () => Promise<T>, retries = 3) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await fn();
     } catch (err: any) {
-      // ✅ If quota exceeded (429), fail immediately (retrying won't help)
-      if (err?.status === 429 || err?.code === 429) throw err;
+      // If quota exceeded (429), fail immediately
+      if (err?.response?.status === 429 || err?.status === 429) throw err;
 
       const last = attempt === retries;
       if (!isOverloaded503(err) || last) throw err;
 
-      // exponential backoff + jitter
-      const base = Math.min(8000, 500 * Math.pow(2, attempt)); 
-      const jitter = Math.floor(Math.random() * 250);
+      // exponential backoff
+      const base = Math.min(6000, 1000 * Math.pow(2, attempt));
+      const jitter = Math.floor(Math.random() * 500);
       await sleep(base + jitter);
     }
   }
@@ -31,59 +31,57 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 4) {
 }
 
 /* -------------------- Gemini client -------------------- */
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+// Initialize the official Web SDK
+const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
 
-// ✅ USE STABLE 1.5 FLASH (High Free Quota: 1,500/day)
-// DO NOT use 'lite' (limit 20/day) or '2.0' (limited availability)
-const MODEL_NAME = "gemini-1.5-flash"; 
+const MODEL_NAME = "gemini-1.5-flash";
 
 /* -------------------- Schema -------------------- */
-const RESUME_SCHEMA: Schema = {
-  type: Type.OBJECT,
+const RESUME_SCHEMA = {
+  type: SchemaType.OBJECT,
   properties: {
-    fullName: { type: Type.STRING },
-    contactInfo: { type: Type.STRING, description: "Format: Email | Phone | LinkedIn" },
-    location: { type: Type.STRING },
-    summary: { type: Type.STRING },
+    fullName: { type: SchemaType.STRING },
+    contactInfo: { type: SchemaType.STRING, description: "Format: Email | Phone | LinkedIn" },
+    location: { type: SchemaType.STRING },
+    summary: { type: SchemaType.STRING },
     skills: {
-      type: Type.ARRAY,
-      items: { type: Type.STRING },
+      type: SchemaType.ARRAY,
+      items: { type: SchemaType.STRING },
       description: "Top skills relevant to the job",
     },
     experience: {
-      type: Type.ARRAY,
+      type: SchemaType.ARRAY,
       items: {
-        type: Type.OBJECT,
+        type: SchemaType.OBJECT,
         properties: {
-          id: { type: Type.STRING }, // ✅ ADDED: Preserve ID
-          role: { type: Type.STRING },
-          company: { type: Type.STRING },
+          id: { type: SchemaType.STRING },
+          role: { type: SchemaType.STRING },
+          company: { type: SchemaType.STRING },
           website: {
-            type: Type.STRING,
-            description: "The official website domain of the company (e.g. 'google.com'). Guess if unknown.",
+            type: SchemaType.STRING,
+            description: "The official website domain (e.g. 'google.com'). Guess if unknown.",
           },
-          duration: { type: Type.STRING },
+          duration: { type: SchemaType.STRING },
           points: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING },
-            description: "Bullet points focusing on impact and metrics",
+            type: SchemaType.ARRAY,
+            items: { type: SchemaType.STRING },
           },
         },
       },
     },
     education: {
-      type: Type.ARRAY,
+      type: SchemaType.ARRAY,
       items: {
-        type: Type.OBJECT,
+        type: SchemaType.OBJECT,
         properties: {
-          id: { type: Type.STRING }, // ✅ ADDED: Preserve ID
-          degree: { type: Type.STRING },
-          school: { type: Type.STRING },
+          id: { type: SchemaType.STRING },
+          degree: { type: SchemaType.STRING },
+          school: { type: SchemaType.STRING },
           website: {
-            type: Type.STRING,
-            description: "The official website domain of the school (e.g. 'harvard.edu'). Guess if unknown.",
+            type: SchemaType.STRING,
+            description: "The official website domain (e.g. 'harvard.edu').",
           },
-          year: { type: Type.STRING },
+          year: { type: SchemaType.STRING },
         },
       },
     },
@@ -92,46 +90,52 @@ const RESUME_SCHEMA: Schema = {
 };
 
 /* -------------------- Helper: Text or PDF Part -------------------- */
-const getContentPart = (input: FileInput): Part => {
+// Converts file input to the format expected by GoogleGenerativeAI
+const getContentParts = (input: FileInput) => {
   if (input.type === "file" && input.mimeType && input.content) {
-    const base64Data = input.content.split(",")[1] || input.content; 
-    return {
-      inlineData: { mimeType: input.mimeType, data: base64Data },
-    };
+    const base64Data = input.content.split(",")[1] || input.content;
+    return [
+      {
+        inlineData: {
+          mimeType: input.mimeType,
+          data: base64Data,
+        },
+      },
+    ];
   }
-  return { text: input.content };
+  return [{ text: input.content }];
 };
 
 /* -------------------- Base Resume Parsing -------------------- */
 export const parseBaseResume = async (baseInput: FileInput): Promise<ResumeData> => {
+  const model = genAI.getGenerativeModel({
+    model: MODEL_NAME,
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: RESUME_SCHEMA,
+    },
+  });
+
   const systemInstruction = `
 You are an expert data extraction assistant.
-Your task is to extract structured data from a raw resume (text or PDF).
-Do not rewrite or embellish the content yet. Keep it as close to the original as possible while formatting it cleanly.
-If dates are ambiguous, infer standard formats (e.g., "Jan 2020 - Present").
-Standardize the "skills" list into a clean array of strings.
-IMPORTANT: Infer the 'website' domain for every company and university (e.g. 'microsoft.com', 'stanford.edu') so logos can be fetched.
+Extract structured data from the resume.
+Infer standard dates (e.g., "Jan 2020 - Present").
+Infer 'website' domains for companies/schools (e.g. 'microsoft.com').
   `.trim();
 
-  const contentPart = getContentPart(baseInput);
+  const userContent = getContentParts(baseInput);
+  userContent.push({ text: "Extract the data into the specified JSON format." });
 
-  const response = await withRetry(() =>
-    ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: {
-        parts: [contentPart, { text: "Extract the data into the specified JSON format." }],
-      },
-      config: {
-        systemInstruction,
-        responseMimeType: "application/json",
-        responseSchema: RESUME_SCHEMA,
-      },
-    })
-  );
+  // Note: systemInstruction is passed at initialization or prepended to prompt in older versions,
+  // but for 1.5-flash, passing it as a systemInstruction property often works best if supported,
+  // otherwise we append it to the prompt. Here we prepend to ensure compatibility.
+  const promptParts = [{ text: systemInstruction }, ...userContent];
 
-  if (!response.text) throw new Error("No response generated from AI");
+  const result = await withRetry(() => model.generateContent(promptParts));
+  const responseText = result.response.text();
 
-  return JSON.parse(response.text) as ResumeData;
+  if (!responseText) throw new Error("No response generated from AI");
+  return JSON.parse(responseText) as ResumeData;
 };
 
 /* -------------------- Tailored Resume Generation -------------------- */
@@ -140,87 +144,51 @@ export const generateTailoredResume = async (
   jobDescriptionInput: FileInput | null,
   config: ResumeConfig
 ): Promise<ResumeData> => {
+  
+  const model = genAI.getGenerativeModel({
+    model: MODEL_NAME,
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: RESUME_SCHEMA,
+    },
+  });
 
-  let toneInstruction = "";
-  switch (config.tone) {
-    case "corporate":
-      toneInstruction = "Use highly professional, executive-level language. Focus on ROI, strategic impact, and formal business terminology."; break;
-    case "creative":
-      toneInstruction = "Use engaging, innovative, and energetic language. Show personality. Focus on creativity, adaptability, and fresh perspectives."; break;
-    default:
-      toneInstruction = "Use a standard, balanced professional tone suitable for most industries.";
-  }
-
-  let lengthInstruction = "";
-  switch (config.length) {
-    case "concise":
-      lengthInstruction = "Keep it extremely concise. Summary should be under 3 sentences. Limit experience to the 3 most recent/relevant roles."; break;
-    case "detailed":
-      lengthInstruction = "Provide a comprehensive detailed overview. Elaborate on projects in the summary. Include up to 5-6 bullet points per role."; break;
-    default:
-      lengthInstruction = "Standard length. Summary approx 4-5 sentences. 3-5 bullet points per relevant role.";
-  }
-
-  let refinementInstruction = "";
-  if (config.refinementLevel <= 20) {
-    refinementInstruction = "STRICTLY PRESERVE ORIGINAL PHRASING. Only fix grammatical errors or major formatting issues.";
-  } else if (config.refinementLevel <= 60) {
-    refinementInstruction = "Polish the resume for clarity and professionalism. Improve awkward sentences but keep the original meaning and tone intact.";
-  } else {
-    refinementInstruction = "COMPLETELY REWRITE for maximum impact. Use strong action verbs and persuasive language. Optimize heavily for ATS keywords.";
-  }
-
-  const isRefinementOnly = !jobDescriptionInput || (!jobDescriptionInput.content && jobDescriptionInput.type === "text");
+  let toneInstruction = "Professional balanced tone.";
+  if (config.tone === "corporate") toneInstruction = "Executive, ROI-focused corporate tone.";
+  if (config.tone === "creative") toneInstruction = "Energetic, innovative, creative tone.";
 
   const systemInstruction = `
 You are an expert resume strategist.
-Your task is to take existing resume data and rewrite it based on specific constraints.
-
-CONFIGURATION:
+Rewrite the resume based on these constraints:
 Tone: ${toneInstruction}
-Length: ${lengthInstruction}
-Rewriting Intensity: ${refinementInstruction}
-Target Language: ${config.language}
+Language: ${config.language}
+Refinement Level: ${config.refinementLevel}/100
 
-TASK:
-${isRefinementOnly
-    ? "The user wants to refine the style, length, and language of their current resume without targeting a specific job."
-    : "The user wants to tailor this resume to a specific Job Description. Prioritize experience and skills that match the JD keywords."
-}
-
-CRITICAL: Translate all content values (summary, roles, descriptions, skills, etc.) into ${config.language}.
-However, you MUST keep the JSON keys (fullName, experience, role, company, etc.) in English as defined in the schema.
-
-Ensure you preserve the 'website' fields for companies and schools in the output.
-Ensure the output strictly follows the JSON schema.
+CRITICAL: Translate all content to ${config.language}, but keep JSON keys in English.
+Preserve 'website' fields.
   `.trim();
 
-  // ✅ SANITIZE INPUT: Remove profile image from context to save tokens/bandwidth
+  // Sanitize input
   const cleanData = { ...baseResumeData };
   delete cleanData.profileImage;
 
-  const parts: Part[] = [{ text: `CURRENT RESUME JSON: ${JSON.stringify(cleanData)}` }];
+  const parts = [
+    { text: systemInstruction },
+    { text: `CURRENT RESUME JSON: ${JSON.stringify(cleanData)}` }
+  ];
 
-  if (!isRefinementOnly && jobDescriptionInput) {
+  if (jobDescriptionInput && (jobDescriptionInput.content || jobDescriptionInput.type === "file")) {
     parts.push({ text: "TARGET JOB DESCRIPTION:" });
-    parts.push(getContentPart(jobDescriptionInput));
+    parts.push(...getContentParts(jobDescriptionInput));
+  } else {
+    parts.push({ text: "Refine the resume style and language only." });
   }
 
-  const response = await withRetry(() =>
-    ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: { parts },
-      config: {
-        systemInstruction,
-        responseMimeType: "application/json",
-        responseSchema: RESUME_SCHEMA,
-      },
-    })
-  );
+  const result = await withRetry(() => model.generateContent(parts));
+  const responseText = result.response.text();
 
-  if (!response.text) throw new Error("No response generated from AI");
-
-  return JSON.parse(response.text) as ResumeData;
+  if (!responseText) throw new Error("No response generated from AI");
+  return JSON.parse(responseText) as ResumeData;
 };
 
 /* -------------------- Chat-driven Resume Update -------------------- */
@@ -228,137 +196,86 @@ export const updateResumeWithChat = async (
   currentData: ResumeData,
   userPrompt: string
 ): Promise<{ data: ResumeData; description: string }> => {
+  
+  // Define a schema specifically for the chat response
+  const CHAT_RESPONSE_SCHEMA = {
+    type: SchemaType.OBJECT,
+    properties: {
+      data: RESUME_SCHEMA,
+      description: { type: SchemaType.STRING },
+    },
+    required: ["data", "description"],
+  };
 
-  const systemInstruction = `
-You are an intelligent resume editor.
-The user will provide their current resume data (JSON) and a request to modify it.
+  const model = genAI.getGenerativeModel({
+    model: MODEL_NAME,
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: CHAT_RESPONSE_SCHEMA,
+    },
+  });
 
-Your task is to:
-1. Perform the requested modification (add, delete, edit, rephrase) on the JSON data.
-2. Provide a very brief (1 sentence) description of what you changed.
-
-Do not lose any existing data unless explicitly asked to remove it.
-Preserve 'website' fields.
-  `.trim();
-
-  // ✅ SANITIZE INPUT: Remove profile image to prevent crash
   const cleanData = { ...currentData };
   delete cleanData.profileImage;
 
-  const prompt = `
-CURRENT DATA:
-${JSON.stringify(cleanData)}
+  const parts = [
+    { text: "You are an intelligent resume editor. Modify the JSON based on the user request." },
+    { text: `CURRENT DATA: ${JSON.stringify(cleanData)}` },
+    { text: `USER REQUEST: ${userPrompt}` }
+  ];
 
-USER REQUEST:
-${userPrompt}
-  `.trim();
+  const result = await withRetry(() => model.generateContent(parts));
+  const responseText = result.response.text();
 
-  const response = await withRetry(() =>
-    ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: prompt,
-      config: {
-        systemInstruction,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            data: RESUME_SCHEMA,
-            description: {
-              type: Type.STRING,
-              description: "Brief description of changes made.",
-            },
-          },
-          required: ["data", "description"],
-        },
-      },
-    })
-  );
-
-  if (!response.text) throw new Error("No response generated from AI");
-
-  return JSON.parse(response.text) as { data: ResumeData; description: string };
+  if (!responseText) throw new Error("No response generated from AI");
+  return JSON.parse(responseText) as { data: ResumeData; description: string };
 };
 
 /* -------------------- Unified Chat Agent -------------------- */
-interface UnifiedChatResult {
-  text: string;
-  proposal?: {
-    data: ResumeData;
-    description: string;
-    metadata: {
-      source: "ai";
-      improvedSections: string[];
-    };
-  };
-}
-
 export async function unifiedChatAgent(
   history: { role: "user" | "model" | "assistant"; text: string }[],
   text: string,
   currentResumeData: ResumeData | null
-): Promise<UnifiedChatResult> {
-
-  // 🟡 No resume loaded → Support / Q&A Mode
+) {
+  // If no resume, use standard text mode (no JSON enforcement)
   if (!currentResumeData) {
-    const systemInstruction = `
-      You are the expert AI support assistant for OneClickCVPro.
-      Your role is to answer questions about the app, features, pricing, and general resume advice.
-      Be helpful, brief, and friendly. Do not hallucinate features.
-    `.trim();
+    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+    
+    // Map history to the format Google Generative AI expects
+    // Note: 'assistant' is not a valid role in this SDK, map to 'model'
+    const chatHistory = history.map(h => ({
+      role: h.role === "assistant" ? "model" : h.role,
+      parts: [{ text: h.text }]
+    }));
+
+    const chat = model.startChat({
+      history: chatHistory,
+      systemInstruction: "You are the helpful support assistant for OneClickCVPro. Be brief and friendly.",
+    });
 
     try {
-      const response = await withRetry(() =>
-        ai.models.generateContent({
-          model: MODEL_NAME,
-          config: { systemInstruction },
-          contents: history.map(m => ({
-            role: m.role === 'assistant' || m.role === 'model' ? 'model' : 'user',
-            parts: [{ text: m.text }]
-          }))
-        })
-      );
-      
-      return { text: response.text || "I'm sorry, I couldn't generate a response." };
-    } catch (err: any) {
-       console.error("Support Chat Error:", err);
-       return { text: "I'm having trouble connecting to the support brain right now. Please try again." };
+      const result = await withRetry(() => chat.sendMessage(text));
+      return { text: result.response.text() };
+    } catch (err) {
+      console.error("Support Chat Error:", err);
+      return { text: "I'm having trouble connecting right now. Please try again." };
     }
   }
 
-  // 🔵 Resume Loaded → Edit Mode
+  // If resume is loaded, use the update function
   try {
     const result = await updateResumeWithChat(currentResumeData, text);
-
     return {
       text: "I’ve prepared a suggested change. Would you like to apply it?",
       proposal: {
         data: result.data,
         description: result.description,
-        metadata: {
-          source: "ai",
-          improvedSections: [],
-        },
+        metadata: { source: "ai", improvedSections: [] },
       },
     };
-
   } catch (err: any) {
-    const msg = String(err?.message || err);
-
-    if (err?.status === 429) {
-       return {
-         text: "⚠️ You've hit the usage limit. Please wait a moment or upgrade.",
-       };
-    }
-
-    if (/overloaded|503|unavailable/i.test(msg)) {
-      return {
-        text: "I’m a bit busy right now 😅 Please try again in a moment.",
-      };
-    }
-
-    return {
-      text: "Something went wrong while editing your resume. Please try again.",
-    };
+    console.error("Resume Update Error:", err);
+    if (err?.message?.includes("429")) return { text: "⚠️ Usage limit hit. Please wait a moment." };
+    return { text: "Something went wrong while editing your resume. Please try again." };
   }
 }
