@@ -225,6 +225,7 @@ const App: React.FC = () => {
   const updateUserState = (newUser: User) => {
     setUser(newUser);
     localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(newUser));
+    localStorage.setItem("oneclickcv_user_id", newUser.id);
   };
 
   const handleLogin = (loggedInUser: User) => {
@@ -242,6 +243,7 @@ const App: React.FC = () => {
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem(STORAGE_KEY_USER);
+    localStorage.removeItem("oneclickcv_user_id");
     setSavedResumes([]);
     setCurrentResume(null);
     navigate("/editor", { replace: true });

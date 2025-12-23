@@ -7,8 +7,20 @@ const API_URL = import.meta.env.PROD
   ? "" 
   : (import.meta.env.VITE_API_URL || "http://localhost:4242");
 
+const resolveUserId = () => {
+  const directId = localStorage.getItem("oneclickcv_user_id");
+  if (directId) return directId;
+  try {
+    const storedUser = localStorage.getItem("oneclickcv_user");
+    const parsed = storedUser ? JSON.parse(storedUser) : null;
+    return parsed?.id || "";
+  } catch {
+    return "";
+  }
+};
+
 const getHeaders = () => {
-  const userId = localStorage.getItem("oneclickcv_user_id"); 
+  const userId = resolveUserId();
   return {
     "Content-Type": "application/json",
     "x-user-id": userId || "",
