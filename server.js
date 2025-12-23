@@ -212,7 +212,7 @@ app.post("/api/ai/parse", async (req, res) => {
     // Stable Library Usage
     const response = await callGemini(async () => {
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash", 
+        model: "gemini-2.5-flash", 
         systemInstruction,
         generationConfig: {
           responseMimeType: "application/json",
@@ -257,7 +257,7 @@ app.post("/api/ai/tailor", async (req, res) => {
 
     const response = await callGemini(async () => {
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash", 
+        model: "gemini-2.5-flash", 
         systemInstruction,
         generationConfig: {
           responseMimeType: "application/json",
@@ -304,7 +304,7 @@ app.post("/api/ai/chat", async (req, res) => {
     
     const response = await callGemini(async () => {
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash", 
+        model: "gemini-2.5-flash", 
         systemInstruction,
         generationConfig: {
           responseMimeType: "application/json",
