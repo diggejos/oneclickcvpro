@@ -11,8 +11,8 @@ import crypto from "crypto";
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// --- NEW: AI IMPORTS ---
-import { GoogleGenAI, Type } from "@google/genai";
+// --- CHANGED: Using the stable Google AI library ---
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import pLimit from 'p-limit'; 
 
 // --- CONFIG ---
@@ -21,9 +21,10 @@ const __dirname = path.dirname(__filename);
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// --- NEW: GEMINI CONFIG ---
+// --- GEMINI CONFIG ---
 // Initialize Google AI with the API key from environment variables
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY);
+
 // Limit concurrent AI requests to 5 to avoid hitting rate limits too fast
 const aiQueue = pLimit(5); 
 
@@ -132,40 +133,40 @@ const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 // ==================================================================
 //   🤖 NEW: AI BACKEND LOGIC
-//   (This replaces the frontend geminiService.ts calls)
+//   (Fixed to use gemini-1.5-flash and stable library)
 // ==================================================================
 
-// 1. Define Schema for AI Responses
+// 1. Define Schema using SchemaType
 const RESUME_RESPONSE_SCHEMA = {
-  type: Type.OBJECT,
+  type: SchemaType.OBJECT,
   properties: {
-    fullName: { type: Type.STRING },
-    contactInfo: { type: Type.STRING, description: "Format: Email | Phone | LinkedIn" },
-    location: { type: Type.STRING },
-    summary: { type: Type.STRING },
-    skills: { type: Type.ARRAY, items: { type: Type.STRING } },
+    fullName: { type: SchemaType.STRING },
+    contactInfo: { type: SchemaType.STRING, description: "Format: Email | Phone | LinkedIn" },
+    location: { type: SchemaType.STRING },
+    summary: { type: SchemaType.STRING },
+    skills: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
     experience: {
-      type: Type.ARRAY,
+      type: SchemaType.ARRAY,
       items: {
-        type: Type.OBJECT,
+        type: SchemaType.OBJECT,
         properties: {
-          role: { type: Type.STRING },
-          company: { type: Type.STRING },
-          website: { type: Type.STRING, description: "Domain (e.g. google.com)" },
-          duration: { type: Type.STRING },
-          points: { type: Type.ARRAY, items: { type: Type.STRING } },
+          role: { type: SchemaType.STRING },
+          company: { type: SchemaType.STRING },
+          website: { type: SchemaType.STRING, description: "Domain (e.g. google.com)" },
+          duration: { type: SchemaType.STRING },
+          points: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
         },
       },
     },
     education: {
-      type: Type.ARRAY,
+      type: SchemaType.ARRAY,
       items: {
-        type: Type.OBJECT,
+        type: SchemaType.OBJECT,
         properties: {
-          degree: { type: Type.STRING },
-          school: { type: Type.STRING },
-          website: { type: Type.STRING },
-          year: { type: Type.STRING },
+          degree: { type: SchemaType.STRING },
+          school: { type: SchemaType.STRING },
+          website: { type: SchemaType.STRING },
+          year: { type: SchemaType.STRING },
         },
       },
     },
@@ -173,7 +174,7 @@ const RESUME_RESPONSE_SCHEMA = {
   required: ["fullName", "summary", "skills", "experience"],
 };
 
-// 2. Helper to format file content for Gemini
+// 2. Helper to format file content
 const getContentPart = (input) => {
   if (input?.type === "file" && input?.mimeType && input?.content) {
     const base64Data = input.content.split(",")[1] || input.content; 
@@ -182,20 +183,17 @@ const getContentPart = (input) => {
   return { text: input?.content || "" };
 };
 
-// 3. Queue Wrapper to prevent 429 Rate Limits
+// 3. Queue Wrapper
 async function callGemini(callFn) {
   return aiQueue(async () => {
     let lastError;
-    // Simple retry logic (3 attempts)
     for (let i = 0; i < 3; i++) {
       try {
         return await callFn();
       } catch (err) {
         lastError = err;
         const msg = err.message || "";
-        // If it's a hard quota limit (daily limit), stop retrying
         if (/quota/i.test(msg) && /exceeded/i.test(msg)) throw err;
-        // Wait 1s, 2s, 3s between retries
         await new Promise(r => setTimeout(r, 1000 * (i + 1))); 
       }
     }
@@ -205,7 +203,7 @@ async function callGemini(callFn) {
 
 // --- AI ROUTES ---
 
-// A. Parse Resume (Free/Cheap)
+// A. Parse Resume
 app.post("/api/ai/parse", async (req, res) => {
   const userIdRaw = req.headers["x-user-id"];
   if (!userIdRaw) return res.status(401).json({ error: "Unauthorized" });
@@ -214,32 +212,32 @@ app.post("/api/ai/parse", async (req, res) => {
     const { baseInput } = req.body;
     const systemInstruction = `Extract structured data from the resume. Infer 'website' domains. Standardize dates.`;
     
-    const response = await callGemini(() => 
-      ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: { parts: [getContentPart(baseInput), { text: "Extract to JSON." }] },
-        config: {
-          systemInstruction,
+    const response = await callGemini(async () => {
+      const model = genAI.getGenerativeModel({ 
+        model: "gemini-1.5-flash", 
+        systemInstruction,
+        generationConfig: {
           responseMimeType: "application/json",
           responseSchema: RESUME_RESPONSE_SCHEMA,
-        },
-      })
-    );
+        }
+      });
+      const parts = [getContentPart(baseInput), { text: "Extract to JSON." }];
+      return await model.generateContent(parts);
+    });
 
-    res.json(JSON.parse(response.text()));
+    res.json(JSON.parse(response.response.text()));
   } catch (error) {
     console.error("Parse Error:", error);
     res.status(500).json({ error: "Failed to parse resume" });
   }
 });
 
-// B. Tailor Resume (Costs 1 Credit)
+// B. Tailor Resume
 app.post("/api/ai/tailor", async (req, res) => {
   const userIdRaw = req.headers["x-user-id"];
   if (!userIdRaw) return res.status(401).json({ error: "Unauthorized" });
   const userId = toObjectId(userIdRaw);
 
-  // Atomic Spend: Charge before generation
   const user = await User.findOneAndUpdate(
     { _id: userId, credits: { $gt: 0 } },
     { $inc: { credits: -1 } },
@@ -266,29 +264,28 @@ app.post("/api/ai/tailor", async (req, res) => {
       parts.push(getContentPart(jobDescriptionInput));
     }
 
-    const response = await callGemini(() => 
-      ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: { parts },
-        config: {
-          systemInstruction,
+    const response = await callGemini(async () => {
+      const model = genAI.getGenerativeModel({ 
+        model: "gemini-1.5-flash", 
+        systemInstruction,
+        generationConfig: {
           responseMimeType: "application/json",
           responseSchema: RESUME_RESPONSE_SCHEMA,
-        },
-      })
-    );
+        }
+      });
+      return await model.generateContent(parts);
+    });
 
-    res.json(JSON.parse(response.text()));
+    res.json(JSON.parse(response.response.text()));
 
   } catch (error) {
     console.error("Tailor Error:", error);
-    // Refund credit on failure
     await User.findByIdAndUpdate(userId, { $inc: { credits: 1 } });
     res.status(500).json({ error: "Generation failed. Credit refunded." });
   }
 });
 
-// C. Chat / Edit (For your ChatAssistant)
+// C. Chat / Edit
 app.post("/api/ai/chat", async (req, res) => {
   const userIdRaw = req.headers["x-user-id"];
   if (!userIdRaw) return res.status(401).json({ error: "Unauthorized" });
@@ -296,46 +293,43 @@ app.post("/api/ai/chat", async (req, res) => {
   const { history, text, currentResumeData } = req.body;
 
   try {
-    // Mode 1: Support Chat (No resume loaded)
+    // Mode 1: Support Chat
     if (!currentResumeData) {
       const systemInstruction = `You are the OneClickCVPro support assistant. Help with features/pricing.`;
       const contents = history.map(h => ({ role: h.role === 'assistant' ? 'model' : 'user', parts: [{ text: h.text }] }));
       contents.push({ role: 'user', parts: [{ text }]});
 
-      const response = await callGemini(() => 
-        ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          config: { systemInstruction },
-          contents,
-        })
-      );
-      return res.json({ text: response.text() });
+      const response = await callGemini(async () => {
+         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", systemInstruction });
+         return await model.generateContent({ contents });
+      });
+      return res.json({ text: response.response.text() });
     }
 
     // Mode 2: Resume Editor
     const systemInstruction = `Modify the JSON based on the user request. Return { data, description }.`;
     const prompt = `CURRENT DATA: ${JSON.stringify(currentResumeData)}\nUSER REQUEST: ${text}`;
     
-    const response = await callGemini(() => 
-      ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: {
-          systemInstruction,
+    const response = await callGemini(async () => {
+      const model = genAI.getGenerativeModel({ 
+        model: "gemini-1.5-flash", 
+        systemInstruction,
+        generationConfig: {
           responseMimeType: "application/json",
           responseSchema: {
-            type: Type.OBJECT,
+            type: SchemaType.OBJECT,
             properties: {
               data: RESUME_RESPONSE_SCHEMA,
-              description: { type: Type.STRING }
+              description: { type: SchemaType.STRING }
             },
             required: ["data", "description"]
           }
         }
-      })
-    );
+      });
+      return await model.generateContent(prompt);
+    });
     
-    const parsed = JSON.parse(response.text());
+    const parsed = JSON.parse(response.response.text());
     res.json({
       text: "I've applied your changes.",
       proposal: { data: parsed.data, description: parsed.description, metadata: { source: "ai", improvedSections: [] } }
@@ -349,7 +343,7 @@ app.post("/api/ai/chat", async (req, res) => {
 
 
 // ==================================================================
-//   EXISTING API ROUTES (Restored exactly as original)
+//   EXISTING API ROUTES (Preserved)
 // ==================================================================
 
 app.get("/api/users/me", async (req, res) => {
@@ -658,7 +652,6 @@ app.post('/api/credits/verify-session', async (req, res) => {
             return res.json({ success: true, credits: updatedUser.credits });
          } 
          
-         // Retry Logic maintained
          for (let i = 0; i < 5; i++) {
             const freshUser = await User.findOne({ _id: userId, processedSessions: sessionId }).select("credits");
             if (freshUser) {
@@ -730,10 +723,8 @@ app.post('/webhook', bodyParser.raw({ type: 'application/json' }), async (reques
 });
 
 // --- ✅ SERVE FRONTEND (PRODUCTION) ---
-// This handles the "Failed to load module script" error by serving 
-// the built index.html for any unknown routes.
 if (process.env.NODE_ENV === 'production') {
-  const distPath = path.join(__dirname, 'dist'); // Must match Vite build output
+  const distPath = path.join(__dirname, 'dist'); 
   app.use(express.static(distPath));
 
   app.get('*', (req, res) => {
