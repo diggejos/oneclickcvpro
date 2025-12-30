@@ -28,9 +28,10 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || process.env.V
 const aiQueue = pLimit(5); 
 
 // --- MODEL CONFIGURATION ---
-// We use 'gemini-1.5-flash-002' which typically has a 1,500 RPD quota.
-// 'gemini-2.5-flash' and 'gemini-2.5-flash-lite' are currently limited to 20 RPD.
-const MODEL_NAME = "gemini-1.5-flash-002";
+// Based on Tier 1 Stats:
+// gemini-2.5-flash is OVERLOADED (1.74K RPM usage vs 1K limit).
+// gemini-2.5-flash-lite has 4K RPM limit and Unlimited RPD.
+const MODEL_NAME = "gemini-2.5-flash-lite";
 
 const toObjectId = (id) => {
   try {
@@ -189,23 +190,26 @@ const getContentPart = (input) => {
 async function callGemini(callFn) {
   return aiQueue(async () => {
     let lastError;
-    for (let i = 0; i < 2; i++) { // Reduced retries to avoid wasting time on hard 429s
+    for (let i = 0; i < 2; i++) { 
       try {
         return await callFn();
       } catch (err) {
         lastError = err;
         const msg = (err.message || "").toLowerCase();
         
-        // If it's a 429 Quota Exceeded, retrying immediately often fails. 
-        // We will throw immediately if it looks like a daily quota issue.
+        // Retry logic for Quota limits
         if (msg.includes('quota') || msg.includes('429')) {
            console.warn(`⚠️ Gemini Quota Hit (${i+1}/2):`, msg);
-           if (i === 1) throw err; // Throw on last attempt
-           await new Promise(r => setTimeout(r, 2000)); // Wait 2s before one retry
+           if (i === 1) throw err;
+           await new Promise(r => setTimeout(r, 2000));
            continue;
         }
         
-        // For other errors, wait a bit and retry
+        if (msg.includes('404') || msg.includes('not found')) {
+           console.error(`❌ Model Not Found (${MODEL_NAME}):`, msg);
+           throw err; // No point retrying a missing model
+        }
+        
         await new Promise(r => setTimeout(r, 1000 * (i + 1))); 
       }
     }
@@ -222,7 +226,6 @@ app.post("/api/ai/parse", async (req, res) => {
     const { baseInput } = req.body;
     const systemInstruction = `Extract structured data from the resume. Infer 'website' domains. Standardize dates.`;
     
-    // Using gemini-1.5-flash-002
     const response = await callGemini(async () => {
       const model = genAI.getGenerativeModel({ 
         model: MODEL_NAME, 
@@ -272,7 +275,6 @@ app.post("/api/ai/tailor", async (req, res) => {
       parts.push(getContentPart(jobDescriptionInput));
     }
 
-    // Using gemini-1.5-flash-002
     const response = await callGemini(async () => {
       const model = genAI.getGenerativeModel({ 
         model: MODEL_NAME, 
@@ -289,7 +291,7 @@ app.post("/api/ai/tailor", async (req, res) => {
 
   } catch (error) {
     console.error("Tailor Error:", error);
-    await User.findByIdAndUpdate(userId, { $inc: { credits: 1 } }); // Refund on error
+    await User.findByIdAndUpdate(userId, { $inc: { credits: 1 } }); // Refund
     const msg = error.message || "";
     if (msg.includes('429') || msg.includes('quota')) {
        return res.status(429).json({ error: "High server traffic (Quota Exceeded). Credits refunded." });
@@ -310,7 +312,6 @@ app.post("/api/ai/chat", async (req, res) => {
       const contents = history.map(h => ({ role: h.role === 'assistant' ? 'model' : 'user', parts: [{ text: h.text }] }));
       contents.push({ role: 'user', parts: [{ text }]});
 
-      // Using gemini-1.5-flash-002
       const response = await callGemini(async () => {
          const model = genAI.getGenerativeModel({ model: MODEL_NAME, systemInstruction });
          const chat = model.startChat({ history: contents });
@@ -324,7 +325,6 @@ app.post("/api/ai/chat", async (req, res) => {
     const systemInstruction = `Modify the JSON based on the user request. Return { data, description }.`;
     const prompt = `CURRENT DATA: ${JSON.stringify(currentResumeData)}\nUSER REQUEST: ${text}`;
     
-    // Using gemini-1.5-flash-002
     const response = await callGemini(async () => {
       const model = genAI.getGenerativeModel({ 
         model: MODEL_NAME, 
