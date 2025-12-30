@@ -12,7 +12,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 // --- STABLE AI LIBRARY ---
-// We use @google/generative-ai instead of @google/genai for stability
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import pLimit from 'p-limit'; 
 
@@ -27,6 +26,11 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // Ensure GEMINI_API_KEY is set in your Render Environment Variables!
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY);
 const aiQueue = pLimit(5); 
+
+// --- MODEL CONFIGURATION ---
+// We use 'gemini-1.5-flash-002' which typically has a 1,500 RPD quota.
+// 'gemini-2.5-flash' and 'gemini-2.5-flash-lite' are currently limited to 20 RPD.
+const MODEL_NAME = "gemini-1.5-flash-002";
 
 const toObjectId = (id) => {
   try {
@@ -131,10 +135,10 @@ const Resume = mongoose.model('Resume', resumeSchema);
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 // ==================================================================
-//   🤖 AI ROUTES (Stable Version)
+//   🤖 AI ROUTES
 // ==================================================================
 
-// 1. Schema Definition (Using SchemaType)
+// 1. Schema Definition
 const RESUME_RESPONSE_SCHEMA = {
   type: SchemaType.OBJECT,
   properties: {
@@ -181,17 +185,27 @@ const getContentPart = (input) => {
   return { text: input?.content || "" };
 };
 
-// 3. Queue Wrapper
+// 3. Queue Wrapper with Error Handling
 async function callGemini(callFn) {
   return aiQueue(async () => {
     let lastError;
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 2; i++) { // Reduced retries to avoid wasting time on hard 429s
       try {
         return await callFn();
       } catch (err) {
         lastError = err;
-        const msg = err.message || "";
-        // Simple backoff for rate limits
+        const msg = (err.message || "").toLowerCase();
+        
+        // If it's a 429 Quota Exceeded, retrying immediately often fails. 
+        // We will throw immediately if it looks like a daily quota issue.
+        if (msg.includes('quota') || msg.includes('429')) {
+           console.warn(`⚠️ Gemini Quota Hit (${i+1}/2):`, msg);
+           if (i === 1) throw err; // Throw on last attempt
+           await new Promise(r => setTimeout(r, 2000)); // Wait 2s before one retry
+           continue;
+        }
+        
+        // For other errors, wait a bit and retry
         await new Promise(r => setTimeout(r, 1000 * (i + 1))); 
       }
     }
@@ -208,11 +222,10 @@ app.post("/api/ai/parse", async (req, res) => {
     const { baseInput } = req.body;
     const systemInstruction = `Extract structured data from the resume. Infer 'website' domains. Standardize dates.`;
     
-    // --- CHANGED: Use gemini-2.5-flash-lite ---
-    // gemini-1.5-flash is deprecated; gemini-2.5-flash-lite is the cost-efficient replacement.
+    // Using gemini-1.5-flash-002
     const response = await callGemini(async () => {
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash-lite", 
+        model: MODEL_NAME, 
         systemInstruction,
         generationConfig: {
           responseMimeType: "application/json",
@@ -226,6 +239,10 @@ app.post("/api/ai/parse", async (req, res) => {
     res.json(JSON.parse(response.response.text()));
   } catch (error) {
     console.error("Parse Error:", error);
+    const msg = error.message || "";
+    if (msg.includes('429') || msg.includes('quota')) {
+       return res.status(429).json({ error: "High server traffic (Quota Exceeded). Please try again in a few minutes." });
+    }
     res.status(500).json({ error: "Failed to parse resume" });
   }
 });
@@ -255,10 +272,10 @@ app.post("/api/ai/tailor", async (req, res) => {
       parts.push(getContentPart(jobDescriptionInput));
     }
 
-    // --- CHANGED: Use gemini-2.5-flash-lite ---
+    // Using gemini-1.5-flash-002
     const response = await callGemini(async () => {
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash-lite", 
+        model: MODEL_NAME, 
         systemInstruction,
         generationConfig: {
           responseMimeType: "application/json",
@@ -272,7 +289,11 @@ app.post("/api/ai/tailor", async (req, res) => {
 
   } catch (error) {
     console.error("Tailor Error:", error);
-    await User.findByIdAndUpdate(userId, { $inc: { credits: 1 } });
+    await User.findByIdAndUpdate(userId, { $inc: { credits: 1 } }); // Refund on error
+    const msg = error.message || "";
+    if (msg.includes('429') || msg.includes('quota')) {
+       return res.status(429).json({ error: "High server traffic (Quota Exceeded). Credits refunded." });
+    }
     res.status(500).json({ error: "Generation failed. Credit refunded." });
   }
 });
@@ -289,9 +310,9 @@ app.post("/api/ai/chat", async (req, res) => {
       const contents = history.map(h => ({ role: h.role === 'assistant' ? 'model' : 'user', parts: [{ text: h.text }] }));
       contents.push({ role: 'user', parts: [{ text }]});
 
-      // --- CHANGED: Use gemini-2.5-flash-lite ---
+      // Using gemini-1.5-flash-002
       const response = await callGemini(async () => {
-         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite", systemInstruction });
+         const model = genAI.getGenerativeModel({ model: MODEL_NAME, systemInstruction });
          const chat = model.startChat({ history: contents });
          return await chat.sendMessage(text);
       });
@@ -303,10 +324,10 @@ app.post("/api/ai/chat", async (req, res) => {
     const systemInstruction = `Modify the JSON based on the user request. Return { data, description }.`;
     const prompt = `CURRENT DATA: ${JSON.stringify(currentResumeData)}\nUSER REQUEST: ${text}`;
     
-    // --- CHANGED: Use gemini-2.5-flash-lite ---
+    // Using gemini-1.5-flash-002
     const response = await callGemini(async () => {
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash-lite", 
+        model: MODEL_NAME, 
         systemInstruction,
         generationConfig: {
           responseMimeType: "application/json",
@@ -331,6 +352,10 @@ app.post("/api/ai/chat", async (req, res) => {
 
   } catch (error) {
     console.error("Chat Error:", error);
+    const msg = error.message || "";
+    if (msg.includes('429') || msg.includes('quota')) {
+       return res.status(429).json({ error: "High server traffic (Quota Exceeded)." });
+    }
     res.status(500).json({ error: "Chat failed" });
   }
 });
