@@ -19,18 +19,6 @@ const resolveUserId = () => {
   }
 };
 
-const resolveUserId = () => {
-  const directId = localStorage.getItem("oneclickcv_user_id");
-  if (directId) return directId;
-  try {
-    const storedUser = localStorage.getItem("oneclickcv_user");
-    const parsed = storedUser ? JSON.parse(storedUser) : null;
-    return parsed?.id || "";
-  } catch {
-    return "";
-  }
-};
-
 const getHeaders = () => {
   const userId = resolveUserId();
   return {
