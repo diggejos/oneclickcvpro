@@ -191,11 +191,7 @@ async function callGemini(callFn) {
       } catch (err) {
         lastError = err;
         const msg = err.message || "";
-        
-        // --- CHANGED: REMOVED IMMEDIATE QUOTA THROW ---
-        // We will let the retry logic handle temporary 429s. 
-        // If it's a hard daily limit, it will eventually fail after 3 tries.
-        
+        // Simple backoff for rate limits
         await new Promise(r => setTimeout(r, 1000 * (i + 1))); 
       }
     }
@@ -212,10 +208,11 @@ app.post("/api/ai/parse", async (req, res) => {
     const { baseInput } = req.body;
     const systemInstruction = `Extract structured data from the resume. Infer 'website' domains. Standardize dates.`;
     
-    // --- CHANGED: Model to gemini-1.5-flash ---
+    // --- CHANGED: Use gemini-2.5-flash-lite ---
+    // gemini-1.5-flash is deprecated; gemini-2.5-flash-lite is the cost-efficient replacement.
     const response = await callGemini(async () => {
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash", 
+        model: "gemini-2.5-flash-lite", 
         systemInstruction,
         generationConfig: {
           responseMimeType: "application/json",
@@ -258,10 +255,10 @@ app.post("/api/ai/tailor", async (req, res) => {
       parts.push(getContentPart(jobDescriptionInput));
     }
 
-    // --- CHANGED: Model to gemini-1.5-flash ---
+    // --- CHANGED: Use gemini-2.5-flash-lite ---
     const response = await callGemini(async () => {
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash", 
+        model: "gemini-2.5-flash-lite", 
         systemInstruction,
         generationConfig: {
           responseMimeType: "application/json",
@@ -292,8 +289,9 @@ app.post("/api/ai/chat", async (req, res) => {
       const contents = history.map(h => ({ role: h.role === 'assistant' ? 'model' : 'user', parts: [{ text: h.text }] }));
       contents.push({ role: 'user', parts: [{ text }]});
 
+      // --- CHANGED: Use gemini-2.5-flash-lite ---
       const response = await callGemini(async () => {
-         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", systemInstruction });
+         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite", systemInstruction });
          const chat = model.startChat({ history: contents });
          return await chat.sendMessage(text);
       });
@@ -305,10 +303,10 @@ app.post("/api/ai/chat", async (req, res) => {
     const systemInstruction = `Modify the JSON based on the user request. Return { data, description }.`;
     const prompt = `CURRENT DATA: ${JSON.stringify(currentResumeData)}\nUSER REQUEST: ${text}`;
     
-    // --- CHANGED: Model to gemini-1.5-flash ---
+    // --- CHANGED: Use gemini-2.5-flash-lite ---
     const response = await callGemini(async () => {
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash", 
+        model: "gemini-2.5-flash-lite", 
         systemInstruction,
         generationConfig: {
           responseMimeType: "application/json",
