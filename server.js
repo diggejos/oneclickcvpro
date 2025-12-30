@@ -191,8 +191,11 @@ async function callGemini(callFn) {
       } catch (err) {
         lastError = err;
         const msg = err.message || "";
-        // Handle Quota limits
-        if (/quota/i.test(msg) && /exceeded/i.test(msg)) throw err;
+        
+        // --- CHANGED: REMOVED IMMEDIATE QUOTA THROW ---
+        // We will let the retry logic handle temporary 429s. 
+        // If it's a hard daily limit, it will eventually fail after 3 tries.
+        
         await new Promise(r => setTimeout(r, 1000 * (i + 1))); 
       }
     }
@@ -209,10 +212,10 @@ app.post("/api/ai/parse", async (req, res) => {
     const { baseInput } = req.body;
     const systemInstruction = `Extract structured data from the resume. Infer 'website' domains. Standardize dates.`;
     
-    // Stable Library Usage
+    // --- CHANGED: Model to gemini-1.5-flash ---
     const response = await callGemini(async () => {
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash", 
+        model: "gemini-1.5-flash", 
         systemInstruction,
         generationConfig: {
           responseMimeType: "application/json",
@@ -255,9 +258,10 @@ app.post("/api/ai/tailor", async (req, res) => {
       parts.push(getContentPart(jobDescriptionInput));
     }
 
+    // --- CHANGED: Model to gemini-1.5-flash ---
     const response = await callGemini(async () => {
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash", 
+        model: "gemini-1.5-flash", 
         systemInstruction,
         generationConfig: {
           responseMimeType: "application/json",
@@ -301,9 +305,10 @@ app.post("/api/ai/chat", async (req, res) => {
     const systemInstruction = `Modify the JSON based on the user request. Return { data, description }.`;
     const prompt = `CURRENT DATA: ${JSON.stringify(currentResumeData)}\nUSER REQUEST: ${text}`;
     
+    // --- CHANGED: Model to gemini-1.5-flash ---
     const response = await callGemini(async () => {
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash", 
+        model: "gemini-1.5-flash", 
         systemInstruction,
         generationConfig: {
           responseMimeType: "application/json",
