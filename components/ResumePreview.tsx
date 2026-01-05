@@ -75,8 +75,8 @@ const LogoBox: React.FC<{ website?: string, showLogos: boolean, fallback: string
       {logoUrl ? (
         <img src={logoUrl} alt="Logo" className="w-6 h-6 object-contain" onError={(e) => (e.currentTarget.style.display = 'none')} />
       ) : (
-        <span className="text-xs font-bold text-slate-400">{fallback.charAt(0)}</span>
-      )}
+        <span className="text-xs font-bold text-slate-400">{(fallback || "?").charAt(0)}</span>
+    )}
     </div>
   );
 };
@@ -258,8 +258,9 @@ export const ResumePreview: React.FC<ResumePreviewProps> = ({ data, baseData, is
             {hasPhoto ? (
                <img src={data.profileImage} alt={data.fullName} className="w-32 h-32 rounded-full object-cover mx-auto mb-4 border-4 border-indigo-50 shadow-md print:border-slate-100 print:shadow-none" />
             ) : (
-               <div className="w-20 h-20 bg-indigo-100 text-indigo-400 rounded-full mx-auto mb-4 flex items-center justify-center text-2xl font-bold print:bg-slate-100 print:text-slate-600">
-                  {data.fullName.charAt(0)}
+                <div className="w-20 h-20 bg-indigo-100 text-indigo-400 rounded-full mx-auto mb-4 flex items-center justify-center text-2xl font-bold print:bg-slate-100 print:text-slate-600">
+                  {/* ✅ FIXED: Defaults to 'U' (User) if name is missing */}
+                  {(data.fullName || "User").charAt(0)}
                </div>
             )}
             <h2 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-4">{getTitle("Contact", language)}</h2>
