@@ -64,9 +64,11 @@ const app = express();
 
 const allowedOrigins = [
   "https://oneclickcvpro-frontend.onrender.com",
-  "https://oneclickcvpro.com",
+  "https://oneclickcvpro.com",      // <-- Add this
+  "https://www.oneclickcvpro.com",  // <-- Add this (Crucial!)
   "http://localhost:5173",
   "http://localhost:3000",
+  "http://localhost:4242",
 ];
 
 app.use(
