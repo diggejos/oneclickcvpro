@@ -1,90 +1,10 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    
-    <title>OneClickCVPro | Instant AI Resume Builder & LinkedIn Converter</title>
-    <meta name="description" content="Generate professional, ATS-optimized resumes from your LinkedIn profile in one click. Tailor your CV for specific job descriptions instantly with AI." />
-    <meta name="keywords" content="AI resume builder, LinkedIn to resume, CV maker, ATS friendly resume, job tailoring, resume optimizer, PDF resume generator" />
-    <meta name="author" content="OneClickCVPro" />
-    
-    <link rel="canonical" href="https://www.oneclickcvpro.com/" />
-    
-    <meta name="robots" content="index, follow, max-image-preview:large" />
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
 
-    <meta property="og:site_name" content="OneClickCVPro" />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://www.oneclickcvpro.com/" />
-    <meta property="og:title" content="OneClickCVPro - The Professional AI Resume Builder" />
-    <meta property="og:description" content="Stop writing from scratch. Turn your LinkedIn profile into a hired resume in one click. Tailored by AI." />
-    <meta property="og:image" content="https://images.unsplash.com/photo-1586281380349-632531db7ed4?auto=format&fit=crop&q=80&w=1200" />
-    <meta property="og:image:alt" content="OneClickCVPro Resume Builder Dashboard" />
-
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="OneClickCVPro - Instant CV Generation" />
-    <meta name="twitter:description" content="Professional resumes in seconds. Powered by advanced AI to beat the ATS." />
-    <meta name="twitter:image" content="https://images.unsplash.com/photo-1586281380349-632531db7ed4?auto=format&fit=crop&q=80&w=1200" />
-    
-    <meta name="theme-color" content="#4F46E5" />
-    
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%234F46E5'/><path d='M30 30 H70 V80 H30 Z' fill='white'/><path d='M40 20 L60 20 L70 30' fill='white' opacity='0.8'/><path d='M70 60 L50 80 L30 60' fill='%234F46E5' opacity='0.2'/></svg>" />
-
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "OneClickCVPro",
-      "applicationCategory": "BusinessApplication",
-      "operatingSystem": "Web",
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "USD",
-        "category": "Free Tier Available"
-      },
-      "description": "AI-powered tool that converts LinkedIn profiles to resumes and tailors them for specific job descriptions.",
-      "featureList": "LinkedIn Import, AI Tailoring, PDF Export, ATS Optimization"
-    }
-    </script>
-
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="https://js.stripe.com/v3/" async></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <style>
-      body { font-family: 'Inter', sans-serif; }
-      /* Print fix for browsers */
-      @media print {
-        @page { margin: 0; }
-        html, body {
-          height: auto;
-          overflow: visible;
-        }
-      }
-    </style>
-  <script type="importmap">
-{
-  "imports": {
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
-    "vite": "https://aistudiocdn.com/vite@^7.2.4"
-  }
-}
-</script>
-<link rel="stylesheet" href="/index.css">
-</head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
-  </body>
-</html>
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
