@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+# Don't let Google crawl private user dashboards or API routes
+Disallow: /dashboard
+Disallow: /api/
+
+# Link to your sitemap
+Sitemap: https://www.oneclickcvpro.com/sitemap.xml
